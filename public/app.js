@@ -21,12 +21,21 @@ async function wg(endpoint, params = {}) {
   return j.data;
 }
 async function getShipsMeta() {
-  const r = await fetch(`/api/ships_meta?realm=${REALM}`);
-  return (await r.json()).data || {};
+  try {
+    const r = await fetch(`/api/ships_meta?realm=${REALM}`);
+    const j = await r.json();
+    return j.data || {};
+  } catch (_) { return {}; }
 }
 async function getExpected() {
-  const r = await fetch(`/api/expected`);
-  return (await r.json()).data || {};
+  // I valori attesi servono solo per il Personal Rating. Se la fonte non
+  // risponde, il sito deve funzionare comunque: torniamo un oggetto vuoto.
+  try {
+    const r = await fetch(`/api/expected`);
+    if (!r.ok) return {};
+    const j = await r.json();
+    return j.data || {};
+  } catch (_) { return {}; }
 }
 
 /* cache dati statici per sessione */
