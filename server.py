@@ -529,7 +529,7 @@ def get_ships_meta(realm):
     if cached is not None:
         return cached
 
-    fields = "ship_id,name,tier,type,nation,is_premium,is_special,images"
+    fields = "ship_id,name,tier,type,nation,is_premium,is_special"
     merged = {}
     page = 1
     while True:
@@ -552,38 +552,60 @@ def get_ships_meta(realm):
 
 
 def get_expected():
-    """Valori attesi per il Personal Rating, combinando due fonti:
+    """Valori attesi per il Personal Rating.
 
-    1. Indice dal database (db_expected): medie per nave calcolate dai
-       giocatori indicizzati. È la fonte primaria e migliora nel tempo.
-    2. File 'expected.json' (se presente): usato come base/integrazione per
-       le navi che il database non copre ancora abbastanza.
+    Base: i valori della community (wows-numbers, EXPECTED_URL), che coprono
+    tutte le navi sull'intera popolazione e si auto-aggiornano. Se la rete non
+    risponde, si ripiega sul file locale 'expected.json' (se presente).
 
-    Il fallback per tier+classe sulle navi senza dati viene applicato dal
-    frontend, che dispone dei metadati (tier/tipo) di ogni nave.
+    Sopra la base si integra l'indice locale del database SOLO per riempire le
+    navi che la base non copre, oppure quando l'indice ha un campione enorme
+    (piu' affidabile della base). Cosi' pochi giocatori indicizzati non possono
+    "sporcare" valori gia' accurati.
+
+    Il fallback per tier+classe sulle navi senza dati lo applica il frontend.
     """
-    # base: file statico (se c'è)
-    table = {}
-    cached = _cache_get("expected_file")
-    if cached is not None:
-        table = dict(cached)
-    else:
-        local_path = os.path.join(HERE, "expected.json")
-        if os.path.isfile(local_path):
-            try:
-                with open(local_path, "r", encoding="utf-8") as f:
-                    doc = json.load(f)
-                base = doc.get("data") if isinstance(doc, dict) and "data" in doc else doc
-                if isinstance(base, dict):
-                    table = base
-            except Exception as e:  # noqa
-                sys.stderr.write("Lettura expected.json fallita: %s\n" % e)
-        _cache_set("expected_file", dict(table))
+    EXPECTED_TTL = 24 * 3600          # i valori attesi cambiano di rado
+    DB_OVERRIDE_MIN_BATTLES = 150000  # la base community vince fino a campioni enormi
 
-    # sovrascrivi/integra con le medie del database (più fresche e specifiche)
+    # base con cache lunga dedicata
+    with _cache_lock:
+        item = _cache.get("expected_base")
+        base = item[1] if item and (time.time() - item[0]) < EXPECTED_TTL else None
+
+    if base is None:
+        base = {}
+        # 1) fonte community (auto-aggiornante)
+        try:
+            doc = fetch_json(EXPECTED_URL)
+            data = doc.get("data") if isinstance(doc, dict) and "data" in doc else doc
+            if isinstance(data, dict):
+                base = {str(k): v for k, v in data.items()
+                        if isinstance(v, dict) and v.get("average_damage_dealt")}
+        except Exception as e:  # noqa
+            sys.stderr.write("Fetch valori attesi community fallito: %s\n" % e)
+        # 2) ripiego: file locale 'expected.json'
+        if not base:
+            local_path = os.path.join(HERE, "expected.json")
+            if os.path.isfile(local_path):
+                try:
+                    with open(local_path, "r", encoding="utf-8") as f:
+                        doc = json.load(f)
+                    data = doc.get("data") if isinstance(doc, dict) and "data" in doc else doc
+                    if isinstance(data, dict):
+                        base = {str(k): v for k, v in data.items() if isinstance(v, dict)}
+                except Exception as e:  # noqa
+                    sys.stderr.write("Lettura expected.json fallita: %s\n" % e)
+        with _cache_lock:
+            _cache["expected_base"] = (time.time(), base)
+
+    table = dict(base)
+
+    # integra col database: riempi i buchi; sovrascrivi solo con campione enorme
     db_vals = db_expected()
     for sid, v in db_vals.items():
-        table[sid] = v
+        if sid not in table or v.get("_battles", 0) >= DB_OVERRIDE_MIN_BATTLES:
+            table[sid] = v
     return table
 
 
