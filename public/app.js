@@ -35,6 +35,7 @@ const I18N = {
     footer: 'Wows Stats \u2014 data via the Wargaming Public API.',
     types: { Destroyer: "Destroyer", Cruiser: "Cruiser", Battleship: "Battleship", AirCarrier: "Aircraft Carrier", Submarine: "Submarine" },
     prLabels: ["\u2014", "Bad", "Below average", "Average", "Good", "Very good", "Great", "Unicum", "Super unicum"],
+    compareTitle: "Compare two players", compareBtn: "COMPARE", vs: "VS", compareP1: "Player 1", compareP2: "Player 2", compareGo: "Compare", compareShip: "Compare a ship", compareNoCommon: "No ships in common between these two players.", backToSearch: "\u2190 Back to search", winner: "better",
   },
   it: {
     locale: "it-IT",
@@ -63,6 +64,7 @@ const I18N = {
     footer: 'Wows Stats \u2014 dati via Wargaming Public API.',
     types: { Destroyer: "Cacciatorpediniere", Cruiser: "Incrociatore", Battleship: "Corazzata", AirCarrier: "Portaerei", Submarine: "Sottomarino" },
     prLabels: ["\u2014", "Pessimo", "Sotto media", "Nella media", "Buono", "Molto buono", "Ottimo", "Unicum", "Super unicum"],
+    compareTitle: "Confronta due giocatori", compareBtn: "CONFRONTA", vs: "VS", compareP1: "Giocatore 1", compareP2: "Giocatore 2", compareGo: "Confronta", compareShip: "Confronta una nave", compareNoCommon: "Nessuna nave in comune tra questi due giocatori.", backToSearch: "\u2190 Torna alla ricerca", winner: "meglio",
   },
   fr: {
     locale: "fr-FR",
@@ -91,6 +93,7 @@ const I18N = {
     footer: 'Wows Stats \u2014 donn\u00e9es via Wargaming Public API.',
     types: { Destroyer: "Destroyer", Cruiser: "Croiseur", Battleship: "Cuirass\u00e9", AirCarrier: "Porte-avions", Submarine: "Sous-marin" },
     prLabels: ["\u2014", "Mauvais", "Sous la moyenne", "Moyen", "Bon", "Tr\u00e8s bon", "Excellent", "Unicum", "Super unicum"],
+    compareTitle: "Comparer deux joueurs", compareBtn: "COMPARER", vs: "VS", compareP1: "Joueur 1", compareP2: "Joueur 2", compareGo: "Comparer", compareShip: "Comparer un navire", compareNoCommon: "Aucun navire en commun entre ces deux joueurs.", backToSearch: "\u2190 Retour \u00e0 la recherche", winner: "meilleur",
   },
   de: {
     locale: "de-DE",
@@ -119,6 +122,7 @@ const I18N = {
     footer: 'Wows Stats \u2014 Daten via Wargaming Public API.',
     types: { Destroyer: "Zerst\u00f6rer", Cruiser: "Kreuzer", Battleship: "Schlachtschiff", AirCarrier: "Flugzeugtr\u00e4ger", Submarine: "U-Boot" },
     prLabels: ["\u2014", "Schlecht", "Unterdurchschnittlich", "Durchschnittlich", "Gut", "Sehr gut", "Hervorragend", "Unicum", "Super-Unicum"],
+    compareTitle: "Zwei Spieler vergleichen", compareBtn: "VERGLEICHEN", vs: "VS", compareP1: "Spieler 1", compareP2: "Spieler 2", compareGo: "Vergleichen", compareShip: "Schiff vergleichen", compareNoCommon: "Keine gemeinsamen Schiffe zwischen diesen beiden Spielern.", backToSearch: "\u2190 Zur\u00fcck zur Suche", winner: "besser",
   },
   es: {
     locale: "es-ES",
@@ -147,6 +151,7 @@ const I18N = {
     footer: 'Wows Stats \u2014 datos via Wargaming Public API.',
     types: { Destroyer: "Destructor", Cruiser: "Crucero", Battleship: "Acorazado", AirCarrier: "Portaaviones", Submarine: "Submarino" },
     prLabels: ["\u2014", "Malo", "Bajo la media", "Medio", "Bueno", "Muy bueno", "Excelente", "Unicum", "S\u00faper unicum"],
+    compareTitle: "Comparar dos jugadores", compareBtn: "COMPARAR", vs: "VS", compareP1: "Jugador 1", compareP2: "Jugador 2", compareGo: "Comparar", compareShip: "Comparar un barco", compareNoCommon: "Ning\u00fan barco en com\u00fan entre estos dos jugadores.", backToSearch: "\u2190 Volver a la b\u00fasqueda", winner: "mejor",
   },
 };
 
@@ -303,6 +308,7 @@ function show(...nodes) { nodes.forEach(n => n.classList.remove("hidden")); }
 
 function goHome() {
   hide(els.results, els.profile, els.status);
+  const cmp = $("#compare"); if (cmp) cmp.classList.add("hidden");
   show(els.hero);
   $("#searchInput").value = "";
   history.replaceState(null, "", location.pathname);
@@ -685,6 +691,7 @@ function applyStaticI18n() {
     langSel.addEventListener("change", () => {
       setLang(langSel.value);
       applyStaticI18n();
+      applyCompareI18n();
       // se c'è un profilo aperto, ridisegnalo nella nuova lingua
       if (_player && !els.profile.classList.contains("hidden")) {
         renderProfile(_player, _clanTag, _allShips);
@@ -700,4 +707,181 @@ function applyStaticI18n() {
     $("#heroFoot").textContent = `Server: ${REALM.toUpperCase()} · App ID …${cfg.app_id_tail}`;
     $("#footMeta").textContent = `realm ${REALM.toUpperCase()}`;
   } catch (_) {}
+
+  // aggancio il pulsante e il modulo confronto
+  initCompare();
 })();
+
+/* ================= CONFRONTO TRA DUE GIOCATORI ================= */
+let _cmpA = null, _cmpB = null;
+
+function initCompare() {
+  const btn = $("#compareBtn");
+  if (btn) btn.addEventListener("click", openCompare);
+  const back = $("#cmpBack");
+  if (back) back.addEventListener("click", goHome);
+  const go = $("#cmpGo");
+  if (go) go.addEventListener("click", runCompare);
+  applyCompareI18n();
+}
+
+function applyCompareI18n() {
+  const setTxt = (sel, v) => { const n = $(sel); if (n) n.textContent = v; };
+  const setPh = (sel, v) => { const n = $(sel); if (n) n.setAttribute("placeholder", v); };
+  setTxt("#compareBtn", t("compareBtn"));
+  setTxt("#cmpTitle", t("compareTitle"));
+  setPh("#cmpInputA", t("compareP1"));
+  setPh("#cmpInputB", t("compareP2"));
+  setTxt("#cmpGo", t("compareGo"));
+  const back = $("#cmpBack"); if (back) back.textContent = t("backToSearch");
+}
+
+function openCompare() {
+  hide(els.hero, els.results, els.profile, els.status);
+  const sec = $("#compare");
+  if (sec) { sec.classList.remove("hidden"); applyCompareI18n(); }
+}
+
+/* carica un giocatore (info + navi pvp) per il confronto */
+async function loadCmpPlayer(name) {
+  name = (name || "").trim();
+  if (name.length < 3) throw new Error(t("minChars"));
+  const list = await wg("account/list", { search: name, limit: 1 });
+  if (!list || !list.length) throw new Error(t("noPlayer", name));
+  const id = list[0].account_id;
+  const info = await wg("account/info", {
+    account_id: id,
+    fields: "nickname,account_id,hidden_profile,statistics",
+  });
+  const player = info[String(id)];
+  if (!player) throw new Error(t("profileUnavailable"));
+  let ships = [];
+  if (!player.hidden_profile) {
+    try {
+      const ss = await wg("ships/stats", { account_id: id, fields: "ship_id,pvp.battles,pvp.wins,pvp.damage_dealt,pvp.frags,pvp.survived_battles,pvp.xp" });
+      ships = ss[String(id)] || [];
+    } catch (_) {}
+  }
+  return { player, ships, id };
+}
+
+async function runCompare() {
+  const nameA = $("#cmpInputA").value, nameB = $("#cmpInputB").value;
+  const out = $("#cmpResult");
+  out.innerHTML = `<div class="status"><div class="spinner"></div></div>`;
+  try {
+    await loadStatic();
+    REALM = $("#realmSelect").value || REALM;
+    const [A, B] = await Promise.all([loadCmpPlayer(nameA), loadCmpPlayer(nameB)]);
+    _cmpA = A; _cmpB = B;
+    renderCompare();
+  } catch (e) {
+    out.innerHTML = `<div class="status error">${t("errorPrefix")}${e.message}</div>`;
+  }
+}
+
+/* calcola le stat aggregate (Random) di un giocatore */
+function cmpAgg(p) {
+  const s = modeStats(p.player, "pvp") || {};
+  const b = s.battles || 0;
+  const deaths = b - (s.survived_battles || 0);
+  return {
+    battles: b,
+    wr: b ? s.wins / b * 100 : 0,
+    dmg: b ? s.damage_dealt / b : 0,
+    frags: b ? s.frags / b : 0,
+    surv: b ? s.survived_battles / b * 100 : 0,
+    xp: b ? s.xp / b : 0,
+    kd: deaths ? s.frags / deaths : (s.frags || 0),
+    ships: p.ships.length,
+  };
+}
+
+function renderCompare() {
+  const A = cmpAgg(_cmpA), B = cmpAgg(_cmpB);
+  // righe: [chiave i18n, valoreA, valoreB, decimali, "su"=più alto è meglio]
+  const rows = [
+    [t("battles"), A.battles, B.battles, 0, true],
+    [t("winRate"), A.wr, B.wr, 2, true],
+    [t("avgDamage"), A.dmg, B.dmg, 0, true],
+    [t("avgFrags"), A.frags, B.frags, 2, true],
+    [t("survival"), A.surv, B.surv, 1, true],
+    [t("avgXp"), A.xp, B.xp, 0, true],
+    [t("kd"), A.kd, B.kd, 2, true],
+    [t("shipsPlayed", "").replace(/\s*\(\)\s*$/, ""), A.ships, B.ships, 0, true],
+  ];
+  const nickA = _cmpA.player.nickname, nickB = _cmpB.player.nickname;
+
+  let html = `<div class="cmp-grid">
+    <div class="cmp-head"></div>
+    <div class="cmp-head cmp-name">${nickA}</div>
+    <div class="cmp-head cmp-name">${nickB}</div>`;
+  for (const [label, va, vb, dec, higher] of rows) {
+    const aWin = higher ? va > vb : va < vb;
+    const bWin = higher ? vb > va : vb < va;
+    html += `<div class="cmp-lab">${label}</div>
+      <div class="cmp-val ${aWin ? "win" : ""}">${fmt(va, dec)}</div>
+      <div class="cmp-val ${bWin ? "win" : ""}">${fmt(vb, dec)}</div>`;
+  }
+  html += `</div>`;
+
+  // navi in comune
+  const idsB = new Set(_cmpB.ships.filter(s => s.pvp && s.pvp.battles).map(s => String(s.ship_id)));
+  const common = _cmpA.ships
+    .filter(s => s.pvp && s.pvp.battles && idsB.has(String(s.ship_id)))
+    .map(s => ({ id: String(s.ship_id), name: (_shipsMeta[String(s.ship_id)] || {}).name || ("#" + s.ship_id), tier: (_shipsMeta[String(s.ship_id)] || {}).tier || 0 }))
+    .sort((x, y) => (y.tier - x.tier) || x.name.localeCompare(y.name));
+
+  if (common.length) {
+    html += `<div class="cmp-ship-sel"><label>${t("compareShip")}</label>
+      <select id="cmpShipSelect">
+        ${common.map(c => `<option value="${c.id}">${roman(c.tier)} · ${c.name}</option>`).join("")}
+      </select></div>
+      <div id="cmpShipResult"></div>`;
+  } else {
+    html += `<div class="empty-mode" style="margin-top:18px">${t("compareNoCommon")}</div>`;
+  }
+
+  $("#cmpResult").innerHTML = html;
+
+  if (common.length) {
+    const sel = $("#cmpShipSelect");
+    sel.addEventListener("change", () => renderCmpShip(sel.value));
+    renderCmpShip(common[0].id);
+  }
+}
+
+function shipPvp(p, shipId) {
+  const sh = p.ships.find(s => String(s.ship_id) === String(shipId));
+  return sh && sh.pvp;
+}
+
+function renderCmpShip(shipId) {
+  const pa = shipPvp(_cmpA, shipId), pb = shipPvp(_cmpB, shipId);
+  if (!pa || !pb) { $("#cmpShipResult").innerHTML = ""; return; }
+  const calc = p => {
+    const b = p.battles || 0, deaths = b - (p.survived_battles || 0);
+    return { battles: b, wr: b ? p.wins / b * 100 : 0, dmg: b ? p.damage_dealt / b : 0,
+             frags: b ? p.frags / b : 0, kd: deaths ? p.frags / deaths : (p.frags || 0) };
+  };
+  const A = calc(pa), B = calc(pb);
+  const rows = [
+    [t("battles"), A.battles, B.battles, 0],
+    [t("winRate"), A.wr, B.wr, 2],
+    [t("avgDamage"), A.dmg, B.dmg, 0],
+    [t("avgFrags"), A.frags, B.frags, 2],
+    [t("kd"), A.kd, B.kd, 2],
+  ];
+  let html = `<div class="cmp-grid cmp-grid-ship">
+    <div class="cmp-head"></div>
+    <div class="cmp-head cmp-name">${_cmpA.player.nickname}</div>
+    <div class="cmp-head cmp-name">${_cmpB.player.nickname}</div>`;
+  for (const [label, va, vb, dec] of rows) {
+    const aWin = va > vb, bWin = vb > va;
+    html += `<div class="cmp-lab">${label}</div>
+      <div class="cmp-val ${aWin ? "win" : ""}">${fmt(va, dec)}</div>
+      <div class="cmp-val ${bWin ? "win" : ""}">${fmt(vb, dec)}</div>`;
+  }
+  html += `</div>`;
+  $("#cmpShipResult").innerHTML = html;
+}

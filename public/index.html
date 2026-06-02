@@ -27,6 +27,7 @@
       </select>
       <button type="submit" id="searchBtn">SEARCH</button>
     </form>
+    <button type="button" id="compareBtn" class="compare-btn">COMPARE</button>
     <select id="langSelect" title="Language" class="lang-select">
       <option value="en">EN</option>
       <option value="it">IT</option>
@@ -56,6 +57,19 @@
 
     <!-- PROFILO GIOCATORE -->
     <section class="profile hidden" id="profile"></section>
+
+    <!-- CONFRONTO -->
+    <section class="compare hidden" id="compare">
+      <a class="cmp-back" id="cmpBack" href="javascript:void(0)">&larr; Back to search</a>
+      <h2 id="cmpTitle">Compare two players</h2>
+      <div class="cmp-inputs">
+        <input type="text" id="cmpInputA" placeholder="Player 1" spellcheck="false" />
+        <span class="cmp-vs">VS</span>
+        <input type="text" id="cmpInputB" placeholder="Player 2" spellcheck="false" />
+        <button type="button" id="cmpGo">Compare</button>
+      </div>
+      <div id="cmpResult"></div>
+    </section>
 
     <!-- STATO -->
     <div class="status hidden" id="status"></div>
