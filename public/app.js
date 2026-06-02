@@ -791,7 +791,7 @@ function applyStaticI18n() {
   set("#heroSub", t("heroSub"));
   const heroBtn = $("#heroForm button"); if (heroBtn) heroBtn.textContent = t("searchBtn");
   const resTitle = $("#results h2"); if (resTitle) resTitle.textContent = t("results");
-  const footText = $("#footText"); if (footText) footText.innerHTML = t("footer");
+  const footText = $("#footText"); if (footText) footText.innerHTML = t("footer") + ' &middot; <a href="/about.html">How it works</a>';
   document.documentElement.lang = LANG;
 }
 
