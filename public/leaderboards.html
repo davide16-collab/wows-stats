@@ -73,6 +73,7 @@
         <button id="tabShip" class="on">By ship</button>
         <button id="tabPlayers">By player</button>
         <button id="tabClans">By clan</button>
+        <button id="tabCB">Clan Battles</button>
       </div>
 
       <!-- per nave -->
@@ -115,6 +116,18 @@
         </div>
         <p class="lb-note">Clans ranked by their members' weighted averages. A clan appears here once you open it on the Clans page.</p>
         <div id="clansResult"></div>
+      </section>
+
+      <!-- clan battles -->
+      <section id="paneCB" class="hidden">
+        <div class="lb-controls">
+          <select id="cbNation">
+            <option value="">All clans</option>
+            <option value="it">Italy</option>
+          </select>
+        </div>
+        <p class="lb-note" id="cbNote">Clan Battles standings from the clan portal. A clan appears here once you open it on the Clans page.</p>
+        <div id="cbResult"></div>
       </section>
     </div>
   </main>
@@ -364,15 +377,54 @@ async function loadClans(page){
   box.innerHTML=html;
 }
 
+/* clan battles */
+const CB_LEAGUES=["Hurricane","Typhoon","Storm","Gale","Squall"];
+const CB_LEAGUE_COLORS=["#CDA4FF","#BEE7BD","#E3D6A0","#CCE4E4","#CC9966"];
+function leagueBadge(lg){
+  if(lg==null||lg<0||lg>4) return `<span style="color:var(--txt-dim)">—</span>`;
+  return `<span style="background:${CB_LEAGUE_COLORS[lg]};color:#10202a;border-radius:10px;padding:2px 9px;font-weight:700;font-size:12px;white-space:nowrap">${CB_LEAGUES[lg]}</span>`;
+}
+let _cbPage=0;
+async function loadCB(page){
+  if(typeof page==="number") _cbPage=page; else _cbPage=0;
+  const box=$("#cbResult");
+  box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
+  const nation=$("#cbNation").value;
+  const res=await api(`/api/leaderboard/cb?nation=${encodeURIComponent(nation)}&offset=${_cbPage*PAGE}&limit=${PAGE}&realm=${REALM}`);
+  if(!res.enabled){ box.innerHTML=`<p class="lb-note">The ranking database is not active right now.</p>`; return; }
+  if(res.season_id){ $("#cbNote").innerHTML=`Clan Battles &mdash; Season ${res.season_id}. Standings from the clan portal; a clan appears here once you open it on the Clans page.`; }
+  const total=res.total||0, rows=res.rows||[];
+  if(!rows.length){ box.innerHTML=`<p class="lb-note">No clans indexed yet${nation?" for this country":""}. Open some clans on the Clans page and check back.</p>`; return; }
+  const base=_cbPage*PAGE;
+  let html=`<div class="table-wrap"><table><thead><tr>
+    <th class="left">#</th><th class="left">Clan</th><th class="left">League</th><th>Group</th>
+    <th>Rating</th><th>Battles</th><th>WR%</th></tr></thead><tbody>`;
+  rows.forEach((c,i)=>{
+    const rk=base+i+1, cls=rk===1?"top1":rk===2?"top2":rk===3?"top3":"";
+    html+=`<tr>
+      <td class="left rank-col ${cls}">${rk}</td>
+      <td class="left"><span class="rk-clan" style="margin-left:0">[${c.tag}]</span> <span style="color:var(--txt-dim)">${c.name||""}</span></td>
+      <td class="left">${leagueBadge(c.league)}</td>
+      <td>${c.division?roman(c.division):"—"}</td>
+      <td style="font-weight:700">${fmt(c.rating)}</td>
+      <td>${fmt(c.battles)}</td>
+      <td style="color:${wrColor(c.wr)};font-weight:600">${fmt(c.wr,1)}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>`+pager("cb",_cbPage,total,"loadCB");
+  box.innerHTML=html;
+}
+
 /* tab */
 function setTab(which){
-  const tabs={ship:"#tabShip",players:"#tabPlayers",clans:"#tabClans"};
-  const panes={ship:"#paneShip",players:"#panePlayers",clans:"#paneClans"};
+  const tabs={ship:"#tabShip",players:"#tabPlayers",clans:"#tabClans",cb:"#tabCB"};
+  const panes={ship:"#paneShip",players:"#panePlayers",clans:"#paneClans",cb:"#paneCB"};
   for(const k in tabs){ $(tabs[k]).classList.toggle("on",k===which); $(panes[k]).classList.toggle("hidden",k!==which); }
 }
 $("#tabShip").onclick=()=>setTab("ship");
 $("#tabPlayers").onclick=()=>{ setTab("players"); loadPlayers(); };
 $("#tabClans").onclick=()=>{ setTab("clans"); loadClans(); };
+$("#tabCB").onclick=()=>{ setTab("cb"); loadCB(); };
 
 /* ricerca posizione di un giocatore */
 async function findPlayerPos(){
@@ -412,6 +464,7 @@ $("#findPlayer").addEventListener("keydown", e=>{ if(e.key==="Enter") findPlayer
 $("#findShipBtn").addEventListener("click", findShipPos);
 $("#findShip").addEventListener("keydown", e=>{ if(e.key==="Enter") findShipPos(); });
 $("#sortClans").addEventListener("change", ()=>loadClans(0));
+$("#cbNation").addEventListener("change", ()=>loadCB(0));
 
 /* init */
 (async()=>{
