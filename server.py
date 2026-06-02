@@ -25,6 +25,87 @@ from urllib.error import URLError, HTTPError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ---------------------------------------------------------------------------
+# DATABASE (opzionale) - "progresso dall'ultima visita"
+# ---------------------------------------------------------------------------
+# Se la variabile DATABASE_URL e' impostata (es. Neon Postgres), il server
+# salva una "fotografia" delle statistiche di ogni giocatore cercato e puo'
+# calcolare quanto e' cambiato dall'ultima volta. Se non c'e', la funzione e'
+# semplicemente disattivata e il resto del sito funziona uguale.
+DATABASE_URL = os.environ.get("DATABASE_URL")
+_db_ready = False
+_db_lock = threading.Lock()
+
+def _db_conn():
+    import psycopg  # importato solo se serve
+    return psycopg.connect(DATABASE_URL, connect_timeout=10)
+
+def db_init():
+    """Crea la tabella degli snapshot se non esiste. Chiamata una volta."""
+    global _db_ready
+    if not DATABASE_URL or _db_ready:
+        return _db_ready
+    try:
+        with _db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS snapshots (
+                        account_id BIGINT PRIMARY KEY,
+                        nickname   TEXT,
+                        ts         BIGINT,
+                        battles    BIGINT,
+                        wins       BIGINT,
+                        damage     DOUBLE PRECISION,
+                        frags      DOUBLE PRECISION
+                    )
+                """)
+            conn.commit()
+        _db_ready = True
+    except Exception as e:  # noqa
+        sys.stderr.write("db_init fallita: %s\n" % e)
+        _db_ready = False
+    return _db_ready
+
+def db_progress(account_id, nickname, battles, wins, damage, frags):
+    """Restituisce lo snapshot precedente (o None) e salva quello nuovo.
+
+    Ritorna un dict {previous: {...}|None} cosi' il frontend calcola la
+    differenza. Tutto entro un lock per evitare corse tra richieste.
+    """
+    if not DATABASE_URL:
+        return {"enabled": False, "previous": None}
+    with _db_lock:
+        if not db_init():
+            return {"enabled": False, "previous": None}
+        prev = None
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT nickname, ts, battles, wins, damage, frags "
+                        "FROM snapshots WHERE account_id=%s", (account_id,))
+                    row = cur.fetchone()
+                    if row:
+                        prev = {"nickname": row[0], "ts": row[1],
+                                "battles": row[2], "wins": row[3],
+                                "damage": row[4], "frags": row[5]}
+                    # salva/aggiorna lo snapshot corrente
+                    cur.execute("""
+                        INSERT INTO snapshots (account_id, nickname, ts, battles, wins, damage, frags)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT (account_id) DO UPDATE SET
+                            nickname=EXCLUDED.nickname, ts=EXCLUDED.ts,
+                            battles=EXCLUDED.battles, wins=EXCLUDED.wins,
+                            damage=EXCLUDED.damage, frags=EXCLUDED.frags
+                    """, (account_id, nickname, int(time.time()),
+                          battles, wins, damage, frags))
+                conn.commit()
+        except Exception as e:  # noqa
+            sys.stderr.write("db_progress fallita: %s\n" % e)
+            return {"enabled": True, "previous": None, "error": str(e)}
+        return {"enabled": True, "previous": prev}
+
+
+# ---------------------------------------------------------------------------
 # CONFIGURAZIONE
 # ---------------------------------------------------------------------------
 APPLICATION_ID = os.environ.get("WG_APP_ID", "62317bb080e94322b11585d4c2bf3a6c")
@@ -244,7 +325,19 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/config":
                 self.send_json({"realm": DEFAULT_REALM,
                                 "realms": list(REALMS.keys()),
-                                "app_id_tail": APPLICATION_ID[-6:]})
+                                "app_id_tail": APPLICATION_ID[-6:],
+                                "progress_enabled": bool(DATABASE_URL)})
+                return
+
+            if path == "/api/progress":
+                def num(name, default=0):
+                    try: return float(qs.get(name, [default])[0])
+                    except Exception: return default
+                acc = int(num("account_id"))
+                nick = (qs.get("nickname", [""])[0])
+                res = db_progress(acc, nick, int(num("battles")), int(num("wins")),
+                                  num("damage"), num("frags"))
+                self.send_json({"status": "ok", **res})
                 return
 
             # file statici
