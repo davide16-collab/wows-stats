@@ -221,19 +221,40 @@ async function loadPlayer(accountId, nick) {
 
     let ships = [];
     if (!player.hidden_profile) {
-      // Chiedo i blocchi-modalità interi (non i singoli sottocampi): più robusto.
-      // Se anche questo fallisse, mostro comunque il profilo senza la tabella navi.
+      // Navi in Random (ships/stats dà solo pvp per nave).
       try {
-        const shipFields = "ship_id,last_battle_time," + MODES.map(m => m.key).join(",");
-        const ss = await wg("ships/stats", { account_id: accountId, fields: shipFields });
+        const ss = await wg("ships/stats", { account_id: accountId, fields: "ship_id,last_battle_time,pvp" });
         ships = (ss[String(accountId)] || []);
-      } catch (_) {
-        try {
-          // fallback minimo: solo Random, che è sempre valido
-          const ss = await wg("ships/stats", { account_id: accountId, fields: "ship_id,last_battle_time,pvp" });
-          ships = (ss[String(accountId)] || []);
-        } catch (_2) { ships = []; }
-      }
+      } catch (_) { ships = []; }
+
+      // Navi in Ranked: seasons/shipstats dà le stagioni per nave.
+      // Aggrego le stagioni (rank_solo) di ogni nave e le fondo nell'elenco
+      // come blocco 'rank_solo', così la tabella Ranked si popola.
+      try {
+        const rss = await wg("seasons/shipstats", { account_id: accountId });
+        const arr = rss[String(accountId)] || [];
+        const byId = {};
+        for (const sh of ships) byId[String(sh.ship_id)] = sh;
+        for (const sh of arr) {
+          const seasons = sh.seasons || {};
+          const tot = { battles: 0, wins: 0, damage_dealt: 0, frags: 0, survived_battles: 0, xp: 0 };
+          for (const sid in seasons) {
+            for (const v in seasons[sid]) {
+              const rs = seasons[sid][v] && seasons[sid][v].rank_solo;
+              if (rs && rs.battles) {
+                tot.battles += rs.battles; tot.wins += rs.wins;
+                tot.damage_dealt += rs.damage_dealt; tot.frags += rs.frags;
+                tot.survived_battles += rs.survived_battles || 0; tot.xp += rs.xp || 0;
+              }
+            }
+          }
+          if (tot.battles > 0) {
+            let target = byId[String(sh.ship_id)];
+            if (!target) { target = { ship_id: sh.ship_id }; ships.push(target); byId[String(sh.ship_id)] = target; }
+            target.rank_solo = tot;
+          }
+        }
+      } catch (_) { /* navi ranked opzionali */ }
     }
     hide(els.status);
     renderProfile(player, clanTag, ships);
