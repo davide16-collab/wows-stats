@@ -66,14 +66,29 @@ def _cache_set(key, value):
 
 
 def fetch_json(url):
-    """Scarica un URL e ritorna il JSON come dict."""
+    """Scarica un URL e ritorna il JSON come dict.
+
+    Se l'API risponde con testo non-JSON (es. 'Not Found'), non solleva
+    un'eccezione criptica ma restituisce un errore in formato standard.
+    """
     req = Request(url, headers={"User-Agent": "WowsStats/1.0"})
     with urlopen(req, timeout=20) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+        raw = resp.read().decode("utf-8", "replace").strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        msg = raw[:200] if raw else "risposta vuota dall'API"
+        return {"status": "error", "error": {"message": f"Risposta non valida dall'API: {msg}"}}
 
 
 def api_base(realm):
     return REALMS.get(realm, REALMS[DEFAULT_REALM])
+
+
+# Endpoint che vivono nel namespace 'wgn' (Wargaming Network) invece di 'wows'.
+# In World of Warships le info clan di un account stanno sotto /wgn/.
+WGN_ENDPOINTS = ("clans/accountinfo", "clans/info", "clans/list",
+                 "clans/membersinfo", "clans/glossary")
 
 
 def build_wg_url(realm, endpoint, params):
@@ -83,7 +98,8 @@ def build_wg_url(realm, endpoint, params):
     flat = {k: (v[0] if isinstance(v, list) else v) for k, v in params.items()}
     qs = urlencode(flat)
     endpoint = endpoint.strip("/")
-    return f"{api_base(realm)}/wows/{endpoint}/?{qs}"
+    namespace = "wgn" if endpoint in WGN_ENDPOINTS else "wows"
+    return f"{api_base(realm)}/{namespace}/{endpoint}/?{qs}"
 
 
 def get_ships_meta(realm):
