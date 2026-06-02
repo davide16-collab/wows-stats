@@ -216,3 +216,9 @@ tbody tr:hover{background:var(--card-2);}
 .progress-stats > div{display:flex;flex-direction:column;}
 .progress-stats b{font-family:var(--sys);font-weight:600;font-size:24px;letter-spacing:-0.02em;color:var(--txt);}
 .progress-stats span{font-family:var(--mono);font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--txt-faint);margin-top:4px;}
+
+/* Banner "risveglio server" (cold start Render) */
+#wakeBanner{position:fixed;top:14px;left:50%;transform:translateX(-50%) translateY(-18px);z-index:9999;display:flex;align-items:center;gap:10px;max-width:min(92vw,540px);padding:11px 17px;background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:999px;box-shadow:var(--shadow);font-size:13.5px;line-height:1.35;opacity:0;pointer-events:none;transition:opacity .25s ease, transform .25s ease;}
+#wakeBanner.on{opacity:1;transform:translateX(-50%) translateY(0);}
+.wake-spin{width:15px;height:15px;flex:0 0 auto;border:2px solid var(--line-2);border-top-color:var(--blue);border-radius:50%;animation:wakeSpin .8s linear infinite;}
+@keyframes wakeSpin{to{transform:rotate(360deg);}}

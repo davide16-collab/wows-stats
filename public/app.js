@@ -200,10 +200,17 @@ async function wg(endpoint, params = {}) {
   return j.data;
 }
 async function getShipsMeta() {
+  const KEY = "wowsstats_smeta2_" + REALM, TTL = 7 * 24 * 3600 * 1000;
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) { const o = JSON.parse(raw); if (o && o.t && (Date.now() - o.t) < TTL && o.d) return o.d; }
+  } catch (_) {}
   try {
     const r = await fetch(`/api/ships_meta?realm=${REALM}`);
     const j = await r.json();
-    return j.data || {};
+    const data = j.data || {};
+    try { localStorage.setItem(KEY, JSON.stringify({ t: Date.now(), d: data })); } catch (_) {}
+    return data;
   } catch (_) { return {}; }
 }
 async function getExpected() {

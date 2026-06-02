@@ -216,7 +216,11 @@ function applyClanTags(containerSel, tags){
 }
 
 async function loadMeta(){
-  try{ const m=await api(`/api/ships_meta?realm=${REALM}`); SHIPS_META=m.data||{}; }catch(_){}
+  const KEY="wowsstats_smeta2_"+REALM, TTL=7*24*3600*1000;
+  let cached=null;
+  try{ const raw=localStorage.getItem(KEY); if(raw){ const o=JSON.parse(raw); if(o&&o.t&&(Date.now()-o.t)<TTL&&o.d) cached=o.d; } }catch(_){}
+  if(cached){ SHIPS_META=cached; }
+  else { try{ const m=await api(`/api/ships_meta?realm=${REALM}`); SHIPS_META=m.data||{}; try{ localStorage.setItem(KEY,JSON.stringify({t:Date.now(),d:SHIPS_META})); }catch(_){} }catch(_){} }
   try{ const e=await api(`/api/expected?realm=${REALM}`); EXPECTED=e.data||{}; }catch(_){}
   buildShipSelect();
 }

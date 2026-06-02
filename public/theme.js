@@ -63,3 +63,51 @@
     injectToggle();
   }
 })();
+
+/* Banner "risveglio server": Render free spegne l'istanza dopo inattivita',
+   quindi la prima richiesta dopo una pausa puo' metterci ~30-60s. Mostriamo un
+   avviso gentile SOLO se una richiesta tarda, e lo togliamo appena risponde.
+   Condiviso da tutte le pagine (theme.js e' incluso ovunque). */
+(function () {
+  var MSG = {
+    it: "Riattivo il server\u2026 la prima visita dopo una pausa puo' richiedere fino a un minuto.",
+    en: "Waking the server\u2026 the first visit after a break can take up to a minute.",
+    fr: "R\u00e9veil du serveur\u2026 la premi\u00e8re visite apr\u00e8s une pause peut prendre jusqu'\u00e0 une minute.",
+    de: "Server wird geweckt\u2026 der erste Besuch nach einer Pause kann bis zu einer Minute dauern.",
+    es: "Despertando el servidor\u2026 la primera visita tras una pausa puede tardar hasta un minuto."
+  };
+  function lang() {
+    try { var v = localStorage.getItem("wowsstats_lang"); if (v && MSG[v]) return v; } catch (_) {}
+    return "en";
+  }
+  var pending = 0, timer = null, el = null;
+  function banner() {
+    if (el) return el;
+    el = document.createElement("div");
+    el.id = "wakeBanner";
+    el.innerHTML = '<span class="wake-spin"></span><span class="wake-txt"></span>';
+    (document.body || document.documentElement).appendChild(el);
+    return el;
+  }
+  function show() {
+    if (!document.body) return;
+    var b = banner();
+    b.querySelector(".wake-txt").textContent = MSG[lang()];
+    b.classList.add("on");
+  }
+  function hide() { if (el) el.classList.remove("on"); }
+  if (!window.fetch) return;
+  var _fetch = window.fetch.bind(window);
+  window.fetch = function () {
+    pending++;
+    if (!timer) timer = setTimeout(show, 2500);
+    function settle() {
+      pending = Math.max(0, pending - 1);
+      if (pending === 0) { clearTimeout(timer); timer = null; hide(); }
+    }
+    return _fetch.apply(window, arguments).then(
+      function (r) { settle(); return r; },
+      function (e) { settle(); throw e; }
+    );
+  };
+})();
