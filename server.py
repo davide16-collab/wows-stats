@@ -74,6 +74,22 @@ def db_init():
                     )
                 """)
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_ship ON ship_index (ship_id)")
+                # Riepilogo clan: una riga per clan, salvata quando si apre
+                # un clan nella pagina Clans. Medie pesate per battaglie.
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS clans (
+                        clan_id      BIGINT PRIMARY KEY,
+                        tag          TEXT,
+                        name         TEXT,
+                        members      INTEGER,
+                        active        INTEGER,
+                        battles      BIGINT,
+                        avg_wr       DOUBLE PRECISION,
+                        avg_damage   DOUBLE PRECISION,
+                        avg_frags    DOUBLE PRECISION,
+                        ts           BIGINT
+                    )
+                """)
             conn.commit()
         _db_ready = True
     except Exception as e:  # noqa
@@ -353,6 +369,66 @@ def db_rank_ship(ship_id, nick):
             return {"found": False}
 
 
+def db_save_clan(clan_id, tag, name, members, active, battles, avg_wr, avg_damage, avg_frags):
+    """Salva/aggiorna il riepilogo di un clan (per la classifica clan)."""
+    if not DATABASE_URL or not clan_id:
+        return False
+    with _db_lock:
+        if not db_init():
+            return False
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO clans (clan_id, tag, name, members, active, battles,
+                                           avg_wr, avg_damage, avg_frags, ts)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT (clan_id) DO UPDATE SET
+                            tag=EXCLUDED.tag, name=EXCLUDED.name, members=EXCLUDED.members,
+                            active=EXCLUDED.active, battles=EXCLUDED.battles,
+                            avg_wr=EXCLUDED.avg_wr, avg_damage=EXCLUDED.avg_damage,
+                            avg_frags=EXCLUDED.avg_frags, ts=EXCLUDED.ts
+                    """, (clan_id, tag, name, members, active, battles,
+                          avg_wr, avg_damage, avg_frags, int(time.time())))
+                conn.commit()
+            return True
+        except Exception as e:  # noqa
+            sys.stderr.write("db_save_clan fallita: %s\n" % e)
+            return False
+
+
+def db_leaderboard_clans(offset=0, limit=50, sort="wr"):
+    """Classifica dei clan indicizzati, paginata. sort: wr|dmg."""
+    if not DATABASE_URL:
+        return {"rows": [], "total": 0}
+    order = "avg_damage" if sort == "dmg" else "avg_wr"
+    with _db_lock:
+        if not db_init():
+            return {"rows": [], "total": 0}
+        rows = []
+        total = 0
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM clans WHERE active >= 3")
+                    total = int(cur.fetchone()[0] or 0)
+                    cur.execute("""
+                        SELECT clan_id, tag, name, members, active, battles,
+                               avg_wr, avg_damage, avg_frags
+                        FROM clans
+                        WHERE active >= 3
+                        ORDER BY %s DESC
+                        OFFSET %%s LIMIT %%s
+                    """ % order, (offset, limit))
+                    for cid, tag, nm, mem, act, b, wr, d, f in cur.fetchall():
+                        rows.append({"clan_id": cid, "tag": tag, "name": nm,
+                                     "members": mem, "active": act, "battles": int(b or 0),
+                                     "avg_wr": wr, "avg_damage": d, "avg_frags": f})
+        except Exception as e:  # noqa
+            sys.stderr.write("db_leaderboard_clans fallita: %s\n" % e)
+        return {"rows": rows, "total": total}
+
+
 # ---------------------------------------------------------------------------
 # CONFIGURAZIONE
 # ---------------------------------------------------------------------------
@@ -614,6 +690,18 @@ class Handler(BaseHTTPRequestHandler):
                                 "rows": res["rows"], "total": res["total"]})
                 return
 
+            if path == "/api/leaderboard/clans":
+                try:
+                    offset = max(0, int(qs.get("offset", ["0"])[0]))
+                    limit = min(100, max(1, int(qs.get("limit", ["50"])[0])))
+                except Exception:
+                    offset, limit = 0, 50
+                sort = (qs.get("sort", ["wr"])[0])
+                res = db_leaderboard_clans(offset, limit, sort)
+                self.send_json({"status": "ok", "enabled": bool(DATABASE_URL),
+                                "rows": res["rows"], "total": res["total"]})
+                return
+
             if path == "/api/leaderboard/rank_player":
                 nick = (qs.get("nickname", [""])[0]).strip()
                 res = db_rank_player(nick)
@@ -654,13 +742,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path != "/api/index":
+        if parsed.path not in ("/api/index", "/api/clan_summary"):
             self.send_json({"status": "error", "error": {"message": "Not found"}}, 404)
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(length) if length else b"{}"
             data = json.loads(body.decode("utf-8", "replace"))
+
+            if parsed.path == "/api/clan_summary":
+                cid = int(data.get("clan_id", 0))
+                ok = db_save_clan(
+                    cid, data.get("tag", ""), data.get("name", ""),
+                    int(data.get("members", 0)), int(data.get("active", 0)),
+                    int(data.get("battles", 0)), float(data.get("avg_wr", 0)),
+                    float(data.get("avg_damage", 0)), float(data.get("avg_frags", 0)),
+                ) if cid else False
+                self.send_json({"status": "ok", "saved": ok, "enabled": bool(DATABASE_URL)})
+                return
+
             acc = int(data.get("account_id", 0))
             ships = data.get("ships", [])
             # normalizza e filtra navi con almeno qualche battaglia
