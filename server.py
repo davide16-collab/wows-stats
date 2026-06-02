@@ -837,9 +837,87 @@ def fetch_clan_cb(realm, clan_id, season_id):
     }
 
 
+def extract_wows_ladder(doc):
+    """Trova l'oggetto wows_ladder nella risposta del portale clan.
+    Il vero ladder ha 'public_rating' e 'max_position' (cosi' non confondiamo
+    il nodo annidato max_position, che ha rating/lega ma non max_position)."""
+    if not isinstance(doc, dict):
+        return None
+    try:
+        wl = doc["clanview"]["wows_ladder"]
+        if isinstance(wl, dict):
+            return wl
+    except Exception:
+        pass
+    found = []
+
+    def walk(x):
+        if isinstance(x, dict):
+            if "public_rating" in x and "max_position" in x:
+                found.append(x)
+            else:
+                for v in x.values():
+                    walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+
+    walk(doc)
+    return found[0] if found else None
+
+
+def parse_wows_ladder(wl):
+    """Normalizza l'oggetto wows_ladder. Ritorna dict o None.
+    La lega, se assente al primo livello, si ricava dal public_rating."""
+    if not isinstance(wl, dict):
+        return None
+
+    def g(*keys):
+        for k in keys:
+            v = wl.get(k)
+            if isinstance(v, (int, float)):
+                return v
+        return None
+
+    pr = g("public_rating", "rating")
+    if pr is None:
+        return None
+    league = g("league")
+    if league is None:
+        # fallback: ricava la lega dal punteggio (Squall parte da ~1000)
+        league = league_from_rating(int(pr))
+    return {
+        "season_id": g("season_number", "season_id"),
+        "public_rating": int(pr),
+        "league": league,
+        "division": g("division"),
+        "division_rating": g("division_rating") or 0,
+        "battles": int(g("battles_count", "battles") or 0),
+        "wins": int(g("wins_count", "wins") or 0),
+    }
+
+
+def league_from_rating(rating):
+    """Lega approssimata dal public_rating. Ogni lega vale 300 punti (3 gruppi
+    da 100). Hurricane non ha tetto. Usato solo come riserva se manca 'league'."""
+    if rating is None:
+        return None
+    # Squall 0-999? In pratica i punteggi reali partono ~1000 (Squall) e salgono.
+    # Soglie: Squall<1300, Gale<1600, Storm<1900, Typhoon<2200, Hurricane>=2200.
+    if rating >= 2200:
+        return 0  # Hurricane
+    if rating >= 1900:
+        return 1  # Typhoon
+    if rating >= 1600:
+        return 2  # Storm
+    if rating >= 1300:
+        return 3  # Gale
+    return 4      # Squall
+
+
 def fetch_clan_ladder(realm, clan_id):
-    """Posizione in classifica Clan Battles dal portale clan (oggetto wows_ladder).
-    Ritorna un dict normalizzato o None. Parsing difensivo."""
+    """Posizione in classifica Clan Battles dal portale clan. Una sola chiamata.
+    Ritorna un dict normalizzato o None."""
     if not clan_id:
         return None
     base = CLAN_PORTAL.get(realm, CLAN_PORTAL["eu"])
@@ -849,46 +927,7 @@ def fetch_clan_ladder(realm, clan_id):
     except Exception as e:  # noqa
         sys.stderr.write("fetch_clan_ladder fallita: %s\n" % e)
         return None
-    ladder = None
-    try:
-        ladder = doc["clanview"]["wows_ladder"]
-    except Exception:
-        ladder = None
-    if not isinstance(ladder, dict):
-        found = []
-
-        def walk(x):
-            if isinstance(x, dict):
-                if "public_rating" in x and ("league" in x or "division" in x):
-                    found.append(x)
-                else:
-                    for v in x.values():
-                        walk(v)
-            elif isinstance(x, list):
-                for v in x:
-                    walk(v)
-
-        walk(doc)
-        ladder = found[0] if found else None
-    if not isinstance(ladder, dict):
-        return None
-
-    def g(*keys):
-        for k in keys:
-            v = ladder.get(k)
-            if isinstance(v, (int, float)):
-                return v
-        return None
-
-    return {
-        "season_id": g("season_number", "season_id"),
-        "public_rating": g("public_rating", "rating") or 0,
-        "league": g("league"),
-        "division": g("division"),
-        "division_rating": g("division_rating") or 0,
-        "battles": int(g("battles_count", "battles") or 0),
-        "wins": int(g("wins_count", "wins") or 0),
-    }
+    return parse_wows_ladder(extract_wows_ladder(doc))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -983,6 +1022,7 @@ class Handler(BaseHTTPRequestHandler):
                         search_raw = {"error": str(e)}
                 season = get_cb_season(realm)
                 ladder_dbg = None
+                parsed = None
                 if cid:
                     base = CLAN_PORTAL.get(realm, CLAN_PORTAL["eu"])
                     try:
@@ -990,17 +1030,18 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception as e:  # noqa
                         ladder_raw = {"error": str(e)}
                     if isinstance(ladder_raw, dict) and "error" not in ladder_raw:
+                        wl = extract_wows_ladder(ladder_raw)
+                        parsed = parse_wows_ladder(wl)
                         cv = ladder_raw.get("clanview") if isinstance(ladder_raw.get("clanview"), dict) else None
-                        wl = cv.get("wows_ladder") if isinstance(cv, dict) else None
                         ladder_dbg = {"top_keys": list(ladder_raw.keys()),
                                       "clanview_keys": (list(cv.keys()) if cv else None),
-                                      "wows_ladder": wl if wl is not None else "(non trovato)"}
+                                      "wows_ladder_keys": (list(wl.keys()) if isinstance(wl, dict) else None)}
                     else:
                         ladder_dbg = ladder_raw
                 self.send_json({"status": "ok", "clan_id": cid, "season_id": season,
                                 "search_raw": search_raw,
                                 "ladder": ladder_dbg,
-                                "parsed": fetch_clan_ladder(realm, cid) if cid else None})
+                                "parsed": parsed})
                 return
 
             if path == "/api/config":
