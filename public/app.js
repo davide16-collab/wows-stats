@@ -823,6 +823,13 @@ function applyStaticI18n() {
 
   // aggancio il pulsante e il modulo confronto
   initCompare();
+
+  // se arrivo con ?q=nickname (es. da una classifica), cerco subito
+  try {
+    const params = new URLSearchParams(location.search);
+    const q = params.get("q");
+    if (q) { $("#searchInput").value = q; search(q); }
+  } catch (_) {}
 })();
 
 /* ================= CONFRONTO TRA DUE GIOCATORI ================= */

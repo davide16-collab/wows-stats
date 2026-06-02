@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Leaderboards — Wows Stats</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  /* stili specifici della pagina classifiche (riusa le variabili del tema) */
+  .lb-wrap{max-width:1000px;margin:0 auto;}
+  .lb-tabs{display:flex;gap:4px;margin:8px 0 22px;border-bottom:1px solid var(--line);}
+  .lb-tabs button{background:none;border:none;border-bottom:2px solid transparent;color:var(--txt-dim);
+    font-family:var(--body);font-weight:500;font-size:16px;padding:10px 16px;cursor:pointer;margin-bottom:-1px;}
+  .lb-tabs button.on{color:var(--blue);border-bottom-color:var(--blue);}
+  .lb-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px;}
+  .lb-controls input,.lb-controls select{
+    background:var(--card);border:1px solid var(--line-2);color:var(--txt);
+    padding:11px 14px;border-radius:var(--radius);font-size:15px;outline:none;font-family:var(--body);
+    box-shadow:var(--shadow-sm);min-width:220px;}
+  .lb-controls input:focus,.lb-controls select:focus{border-color:var(--blue);}
+  .lb-note{color:var(--txt-dim);font-size:14px;margin:0 0 18px;}
+  .rank-col{font-family:var(--sys);font-weight:700;color:var(--txt-faint);width:48px;}
+  .rank-col.top1{color:#d4a017;}
+  .rank-col.top2{color:#9aa0a6;}
+  .rank-col.top3{color:#b87333;}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" id="homeBtn" title="Home" onclick="location.href='/'">
+      <span class="brand-mark"></span>
+      <span class="brand-name">WOWS<span class="amber">STATS</span></span>
+    </div>
+    <nav style="display:flex;gap:6px;margin-left:auto;align-items:center">
+      <a href="/" class="compare-btn" style="text-decoration:none">SEARCH</a>
+      <select id="realmSelect" class="lang-select" title="Server">
+        <option value="eu">EU</option>
+        <option value="na">NA</option>
+        <option value="asia">ASIA</option>
+      </select>
+    </nav>
+  </header>
+
+  <main id="main">
+    <div class="lb-wrap">
+      <h1 style="font-size:32px;font-weight:700;letter-spacing:-0.03em;margin:0 0 4px">Leaderboards</h1>
+      <p class="lb-note" id="lbIntro">Rankings are built from players indexed by this site. They grow as more players are searched.</p>
+
+      <div class="lb-tabs">
+        <button id="tabShip" class="on">By ship</button>
+        <button id="tabPlayers">By player</button>
+      </div>
+
+      <!-- per nave -->
+      <section id="paneShip">
+        <div class="lb-controls">
+          <input type="text" id="shipSearch" placeholder="Type a ship name…" spellcheck="false" autocomplete="off" />
+          <select id="shipSelect"></select>
+          <select id="sortShip">
+            <option value="pr">Sort: PR</option>
+            <option value="dmg">Sort: Avg. damage</option>
+            <option value="wr">Sort: Win rate</option>
+          </select>
+        </div>
+        <div id="shipResult"></div>
+      </section>
+
+      <!-- per giocatore -->
+      <section id="panePlayers" class="hidden">
+        <p class="lb-note">Top indexed players by average damage. Click a name to open the full profile.</p>
+        <div id="playersResult"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span>Wows Stats &mdash; data via the Wargaming Public API.</span>
+    <span id="footMeta"></span>
+  </footer>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let REALM = "eu";
+let SHIPS_META = {}, EXPECTED = {};
+
+const fmt = (n, d = 0) => (n == null || isNaN(n)) ? "—" :
+  Number(n).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
+function roman(n){return ["—","I","II","III","IV","V","VI","VII","VIII","IX","X","★"][n]||n;}
+
+/* --- colori PR/WR (come la home, versione chiara) --- */
+const PR_SCALE=[[0,"#86868b"],[1,"#d11500"],[750,"#d97000"],[1100,"#b8860b"],[1350,"#3a9400"],[1550,"#2e7d00"],[1750,"#009b8a"],[2100,"#b521d6"],[2450,"#8a0ba8"]];
+function prColor(pr){let c=PR_SCALE[0][1];for(const r of PR_SCALE)if(pr>=r[0])c=r[1];return c;}
+const WR_SCALE=[[0,"#86868b"],[0.001,"#d11500"],[47,"#d97000"],[50,"#b8860b"],[52,"#3a9400"],[54,"#2e7d00"],[56,"#009b8a"],[60,"#b521d6"],[65,"#8a0ba8"]];
+function wrColor(wr){let c=WR_SCALE[0][1];for(const r of WR_SCALE)if(wr>=r[0])c=r[1];return c;}
+
+/* --- fallback valori attesi per tier+classe (come la home) --- */
+const FALLBACK_DMG={
+  Battleship:[0,8000,12000,18000,26000,34000,44000,55000,68000,82000,95000,100000],
+  Cruiser:[0,6000,10000,15000,22000,30000,38000,47000,58000,70000,82000,88000],
+  Destroyer:[0,5000,8000,12000,17000,23000,30000,38000,47000,57000,66000,70000],
+  AirCarrier:[0,8000,12000,20000,30000,40000,52000,64000,78000,92000,105000,110000],
+  Submarine:[0,5000,8000,12000,18000,24000,32000,40000,50000,60000,70000,75000],
+};
+const FALLBACK_FRAGS={Battleship:0.85,Cruiser:0.95,Destroyer:0.80,AirCarrier:1.10,Submarine:0.80};
+function expectedFor(shipId){
+  const e=EXPECTED[String(shipId)];
+  if(e&&e.average_damage_dealt)return e;
+  const m=SHIPS_META[String(shipId)];
+  if(!m||!m.tier||!m.type)return null;
+  const row=FALLBACK_DMG[m.type]; if(!row)return null;
+  const dmg=row[m.tier]||row[row.length-1]; if(!dmg)return null;
+  return {average_damage_dealt:dmg,average_frags:FALLBACK_FRAGS[m.type]||0.85,win_rate:50};
+}
+function shipPRfromRow(r, shipId){
+  const exp=expectedFor(shipId); if(!exp)return null;
+  const b=r.battles; if(!b)return null;
+  const rDmg=(r.damage/b)/exp.average_damage_dealt;
+  const rFrags=(r.frags/b)/exp.average_frags;
+  const rWins=(r.wins/b*100)/exp.win_rate;
+  const nDmg=Math.max(0,(rDmg-0.4)/0.6),nFrags=Math.max(0,(rFrags-0.1)/0.9),nWins=Math.max(0,(rWins-0.7)/0.3);
+  return 700*nDmg+300*nFrags+150*nWins;
+}
+
+async function api(path){ const r=await fetch(path); return r.json(); }
+
+async function loadMeta(){
+  try{ const m=await api(`/api/ships_meta?realm=${REALM}`); SHIPS_META=m.data||{}; }catch(_){}
+  try{ const e=await api(`/api/expected?realm=${REALM}`); EXPECTED=e.data||{}; }catch(_){}
+  buildShipSelect();
+}
+
+function buildShipSelect(filter){
+  const sel=$("#shipSelect");
+  const f=(filter||"").toLowerCase();
+  const list=Object.entries(SHIPS_META)
+    .map(([id,m])=>({id,name:m.name||("#"+id),tier:m.tier||0,type:m.type}))
+    .filter(s=>s.name&&(!f||s.name.toLowerCase().includes(f)))
+    .sort((a,b)=>(b.tier-a.tier)||a.name.localeCompare(b.name))
+    .slice(0,300);
+  sel.innerHTML=list.map(s=>`<option value="${s.id}">${roman(s.tier)} · ${s.name}</option>`).join("");
+  if(list.length) loadShip(list[0].id);
+  else $("#shipResult").innerHTML=`<p class="lb-note">No ship matches.</p>`;
+}
+
+async function loadShip(shipId){
+  const box=$("#shipResult");
+  box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
+  const res=await api(`/api/leaderboard/ship?ship_id=${shipId}&realm=${REALM}`);
+  if(!res.enabled){ box.innerHTML=`<p class="lb-note">The ranking database is not active right now.</p>`; return; }
+  let rows=(res.rows||[]).map(r=>({...r, pr:shipPRfromRow(r,shipId), wr:r.battles?r.wins/r.battles*100:0, avgDmg:r.battles?r.damage/r.battles:0}));
+  if(!rows.length){ box.innerHTML=`<p class="lb-note">No indexed players for this ship yet. Search some players who own it and check back.</p>`; return; }
+  sortAndRenderShip(rows);
+}
+
+function sortAndRenderShip(rows){
+  const sort=$("#sortShip").value;
+  rows.sort((a,b)=> sort==="dmg" ? b.avgDmg-a.avgDmg : sort==="wr" ? b.wr-a.wr : (b.pr||0)-(a.pr||0));
+  rows=rows.slice(0,50);
+  let html=`<div class="table-wrap"><table><thead><tr>
+    <th class="left">#</th><th class="left">Player</th><th>Battles</th>
+    <th>WR%</th><th>Avg. damage</th><th>PR</th></tr></thead><tbody>`;
+  rows.forEach((r,i)=>{
+    const rk=i+1, cls=rk===1?"top1":rk===2?"top2":rk===3?"top3":"";
+    html+=`<tr>
+      <td class="left rank-col ${cls}">${rk}</td>
+      <td class="left"><a href="/?q=${encodeURIComponent(r.nickname)}" style="font-weight:600">${r.nickname}</a></td>
+      <td>${fmt(r.battles)}</td>
+      <td style="color:${wrColor(r.wr)};font-weight:600">${fmt(r.wr,1)}</td>
+      <td>${fmt(r.avgDmg)}</td>
+      <td style="color:${prColor(r.pr||0)};font-weight:600">${r.pr!=null?fmt(r.pr):"—"}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>`;
+  $("#shipResult").innerHTML=html;
+  $("#shipResult")._rows=rows;
+}
+
+async function loadPlayers(){
+  const box=$("#playersResult");
+  box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
+  const res=await api(`/api/leaderboard/players?realm=${REALM}`);
+  if(!res.enabled){ box.innerHTML=`<p class="lb-note">The ranking database is not active right now.</p>`; return; }
+  let rows=(res.rows||[]).map(r=>({...r, wr:r.battles?r.wins/r.battles*100:0, avgDmg:r.battles?r.damage/r.battles:0}));
+  if(!rows.length){ box.innerHTML=`<p class="lb-note">No indexed players yet. Search some players and check back.</p>`; return; }
+  rows=rows.slice(0,50);
+  let html=`<div class="table-wrap"><table><thead><tr>
+    <th class="left">#</th><th class="left">Player</th><th>Battles</th>
+    <th>WR%</th><th>Avg. damage</th><th>Avg. frags</th></tr></thead><tbody>`;
+  rows.forEach((r,i)=>{
+    const rk=i+1, cls=rk===1?"top1":rk===2?"top2":rk===3?"top3":"";
+    const avgF=r.battles?r.frags/r.battles:0;
+    html+=`<tr>
+      <td class="left rank-col ${cls}">${rk}</td>
+      <td class="left"><a href="/?q=${encodeURIComponent(r.nickname)}" style="font-weight:600">${r.nickname}</a></td>
+      <td>${fmt(r.battles)}</td>
+      <td style="color:${wrColor(r.wr)};font-weight:600">${fmt(r.wr,1)}</td>
+      <td>${fmt(r.avgDmg)}</td>
+      <td>${fmt(avgF,2)}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>`;
+  box.innerHTML=html;
+}
+
+/* tab */
+$("#tabShip").onclick=()=>{ $("#tabShip").classList.add("on"); $("#tabPlayers").classList.remove("on");
+  $("#paneShip").classList.remove("hidden"); $("#panePlayers").classList.add("hidden"); };
+$("#tabPlayers").onclick=()=>{ $("#tabPlayers").classList.add("on"); $("#tabShip").classList.remove("on");
+  $("#panePlayers").classList.remove("hidden"); $("#paneShip").classList.add("hidden"); loadPlayers(); };
+
+/* eventi */
+$("#shipSearch").addEventListener("input", e=>buildShipSelect(e.target.value));
+$("#shipSelect").addEventListener("change", e=>loadShip(e.target.value));
+$("#sortShip").addEventListener("change", ()=>{ const r=$("#shipResult")._rows; if(r) sortAndRenderShip(r); });
+$("#realmSelect").addEventListener("change", e=>{ REALM=e.target.value; loadMeta(); });
+
+/* init */
+(async()=>{
+  try{ const cfg=await api("/api/config"); REALM=cfg.realm||"eu"; $("#realmSelect").value=REALM; $("#footMeta").textContent=`realm ${REALM.toUpperCase()}`; }catch(_){}
+  await loadMeta();
+})();
+</script>
+</body>
+</html>
