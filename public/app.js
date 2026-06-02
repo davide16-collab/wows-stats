@@ -427,39 +427,14 @@ async function loadPlayer(accountId, nick) {
 
     // clan
     let clanTag = null;
-    _clanColor = null;
+    _clanColor = null;  // l'API WoWS non espone la lega CB del clan in modo
+                        // affidabile, quindi il tag usa il colore fisso (accento)
     try {
       const ca = await wg("clans/accountinfo", { account_id: accountId, fields: "clan_id" });
       const cid = ca[String(accountId)] && ca[String(accountId)].clan_id;
       if (cid) {
         const ci = await wg("clans/info", { clan_id: cid, fields: "tag" });
         clanTag = ci[String(cid)] && ci[String(cid)].tag;
-        // colore della lega clan: se c'è una stagione in corso uso quella,
-        // altrimenti (pausa) la lega dell'ultima stagione conclusa.
-        try {
-          const se = await wg("clans/season", { clan_id: cid });
-          const root = (se && se[String(cid)]) || se;
-          if (root && typeof root === "object") {
-            const now = Math.floor(Date.now() / 1000);
-            let ongoing = null, ongoingStart = -1;   // stagione in corso
-            let lastDone = null, lastDoneFinish = -1; // ultima conclusa
-            for (const sid in root) {
-              const s = root[sid];
-              const leagues = s && s.leagues;
-              if (!leagues || !leagues.length) continue;
-              const start = s.start_time || 0;
-              const finish = s.finish_time || 0;
-              const isOngoing = start && start <= now && (!finish || finish > now);
-              if (isOngoing) {
-                if (start > ongoingStart) { ongoingStart = start; ongoing = leagues[0]; }
-              } else if (finish && finish <= now) {
-                if (finish > lastDoneFinish) { lastDoneFinish = finish; lastDone = leagues[0]; }
-              }
-            }
-            const chosen = ongoing || lastDone;
-            if (chosen && chosen.color) _clanColor = chosen.color;
-          }
-        } catch (_) { /* lega opzionale */ }
       }
     } catch (_) { /* clan opzionale */ }
 
