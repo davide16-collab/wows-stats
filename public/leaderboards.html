@@ -23,6 +23,12 @@
   .rank-col.top1{color:#d4a017;}
   .rank-col.top2{color:#9aa0a6;}
   .rank-col.top3{color:#b87333;}
+  .lb-pager{display:flex;align-items:center;justify-content:center;gap:16px;margin:18px 0 4px;}
+  .lb-pager button{background:var(--card);border:1px solid var(--line-2);color:var(--txt);
+    padding:9px 18px;border-radius:980px;font-size:14px;cursor:pointer;font-family:var(--body);transition:all .15s;}
+  .lb-pager button:hover:not(:disabled){border-color:var(--blue);color:var(--blue);}
+  .lb-pager button:disabled{opacity:.4;cursor:not-allowed;}
+  .lb-pageinfo{font-family:var(--mono);font-size:13px;color:var(--txt-faint);}
 </style>
   <script src="theme.js"></script>
 </head>
@@ -140,29 +146,50 @@ function buildShipSelect(filter){
     .sort((a,b)=>(b.tier-a.tier)||a.name.localeCompare(b.name))
     .slice(0,300);
   sel.innerHTML=list.map(s=>`<option value="${s.id}">${roman(s.tier)} · ${s.name}</option>`).join("");
-  if(list.length) loadShip(list[0].id);
+  if(list.length){ _shipId=list[0].id; loadShip(0); }
   else $("#shipResult").innerHTML=`<p class="lb-note">No ship matches.</p>`;
 }
 
-async function loadShip(shipId){
-  const box=$("#shipResult");
-  box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
-  const res=await api(`/api/leaderboard/ship?ship_id=${shipId}&realm=${REALM}`);
-  if(!res.enabled){ box.innerHTML=`<p class="lb-note">The ranking database is not active right now.</p>`; return; }
-  let rows=(res.rows||[]).map(r=>({...r, pr:shipPRfromRow(r,shipId), wr:r.battles?r.wins/r.battles*100:0, avgDmg:r.battles?r.damage/r.battles:0}));
-  if(!rows.length){ box.innerHTML=`<p class="lb-note">No indexed players for this ship yet. Search some players who own it and check back.</p>`; return; }
-  sortAndRenderShip(rows);
+const PAGE=50;
+let _shipPage=0, _shipId=null, _playersPage=0;
+
+function pager(id, page, total, fnName){
+  const pages=Math.max(1, Math.ceil(total/PAGE));
+  const cur=page+1;
+  const from=total?page*PAGE+1:0, to=Math.min(total,(page+1)*PAGE);
+  return `<div class="lb-pager">
+    <button ${page<=0?"disabled":""} onclick="${fnName}(${page-1})">&lsaquo; Prev</button>
+    <span class="lb-pageinfo">${from}–${to} of ${total} · page ${cur}/${pages}</span>
+    <button ${cur>=pages?"disabled":""} onclick="${fnName}(${page+1})">Next &rsaquo;</button>
+  </div>`;
 }
 
-function sortAndRenderShip(rows){
+async function loadShip(page){
+  if(typeof page==="number") _shipPage=page; else _shipPage=0;
+  const box=$("#shipResult");
+  box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
+  const res=await api(`/api/leaderboard/ship?ship_id=${_shipId}&offset=${_shipPage*PAGE}&limit=${PAGE}&realm=${REALM}`);
+  if(!res.enabled){ box.innerHTML=`<p class="lb-note">The ranking database is not active right now.</p>`; return; }
+  const total=res.total||0;
+  let rows=(res.rows||[]).map(r=>({...r, pr:shipPRfromRow(r,_shipId), wr:r.battles?r.wins/r.battles*100:0, avgDmg:r.battles?r.damage/r.battles:0}));
+  if(!rows.length){ box.innerHTML=`<p class="lb-note">No indexed players for this ship yet. Search some players who own it and check back.</p>`; return; }
+  renderShip(rows, total);
+}
+
+function renderShip(rows, total){
+  // ordinamento locale della pagina corrente (il rank globale resta per danno)
   const sort=$("#sortShip").value;
-  rows.sort((a,b)=> sort==="dmg" ? b.avgDmg-a.avgDmg : sort==="wr" ? b.wr-a.wr : (b.pr||0)-(a.pr||0));
-  rows=rows.slice(0,50);
+  const base=_shipPage*PAGE; // offset per il numero di rank globale
+  // calcolo i rank globali PRIMA di un eventuale riordino locale
+  rows.forEach((r,i)=>r._rank=base+i+1);
+  if(sort!=="dmg"){
+    rows=[...rows].sort((a,b)=> sort==="wr" ? b.wr-a.wr : (b.pr||0)-(a.pr||0));
+  }
   let html=`<div class="table-wrap"><table><thead><tr>
     <th class="left">#</th><th class="left">Player</th><th>Battles</th>
     <th>WR%</th><th>Avg. damage</th><th>PR</th></tr></thead><tbody>`;
-  rows.forEach((r,i)=>{
-    const rk=i+1, cls=rk===1?"top1":rk===2?"top2":rk===3?"top3":"";
+  rows.forEach((r)=>{
+    const rk=r._rank, cls=rk===1?"top1":rk===2?"top2":rk===3?"top3":"";
     html+=`<tr>
       <td class="left rank-col ${cls}">${rk}</td>
       <td class="left"><a href="/?q=${encodeURIComponent(r.nickname)}" style="font-weight:600">${r.nickname}</a></td>
@@ -172,24 +199,27 @@ function sortAndRenderShip(rows){
       <td style="color:${prColor(r.pr||0)};font-weight:600">${r.pr!=null?fmt(r.pr):"—"}</td>
     </tr>`;
   });
-  html+=`</tbody></table></div>`;
+  html+=`</tbody></table></div>`+pager("ship",_shipPage,total,"loadShip");
   $("#shipResult").innerHTML=html;
   $("#shipResult")._rows=rows;
+  $("#shipResult")._total=total;
 }
 
-async function loadPlayers(){
+async function loadPlayers(page){
+  if(typeof page==="number") _playersPage=page; else _playersPage=0;
   const box=$("#playersResult");
   box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
-  const res=await api(`/api/leaderboard/players?realm=${REALM}`);
+  const res=await api(`/api/leaderboard/players?offset=${_playersPage*PAGE}&limit=${PAGE}&realm=${REALM}`);
   if(!res.enabled){ box.innerHTML=`<p class="lb-note">The ranking database is not active right now.</p>`; return; }
+  const total=res.total||0;
   let rows=(res.rows||[]).map(r=>({...r, wr:r.battles?r.wins/r.battles*100:0, avgDmg:r.battles?r.damage/r.battles:0}));
   if(!rows.length){ box.innerHTML=`<p class="lb-note">No indexed players yet. Search some players and check back.</p>`; return; }
-  rows=rows.slice(0,50);
+  const base=_playersPage*PAGE;
   let html=`<div class="table-wrap"><table><thead><tr>
     <th class="left">#</th><th class="left">Player</th><th>Battles</th>
     <th>WR%</th><th>Avg. damage</th><th>Avg. frags</th></tr></thead><tbody>`;
   rows.forEach((r,i)=>{
-    const rk=i+1, cls=rk===1?"top1":rk===2?"top2":rk===3?"top3":"";
+    const rk=base+i+1, cls=rk===1?"top1":rk===2?"top2":rk===3?"top3":"";
     const avgF=r.battles?r.frags/r.battles:0;
     html+=`<tr>
       <td class="left rank-col ${cls}">${rk}</td>
@@ -200,7 +230,7 @@ async function loadPlayers(){
       <td>${fmt(avgF,2)}</td>
     </tr>`;
   });
-  html+=`</tbody></table></div>`;
+  html+=`</tbody></table></div>`+pager("players",_playersPage,total,"loadPlayers");
   box.innerHTML=html;
 }
 
@@ -212,8 +242,8 @@ $("#tabPlayers").onclick=()=>{ $("#tabPlayers").classList.add("on"); $("#tabShip
 
 /* eventi */
 $("#shipSearch").addEventListener("input", e=>buildShipSelect(e.target.value));
-$("#shipSelect").addEventListener("change", e=>loadShip(e.target.value));
-$("#sortShip").addEventListener("change", ()=>{ const r=$("#shipResult")._rows; if(r) sortAndRenderShip(r); });
+$("#shipSelect").addEventListener("change", e=>{ _shipId=e.target.value; loadShip(0); });
+$("#sortShip").addEventListener("change", ()=>{ const r=$("#shipResult")._rows, t=$("#shipResult")._total; if(r) renderShip(r,t); });
 $("#realmSelect").addEventListener("change", e=>{ REALM=e.target.value; loadMeta(); });
 
 /* init */
