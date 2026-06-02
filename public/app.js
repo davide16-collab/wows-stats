@@ -434,21 +434,30 @@ async function loadPlayer(accountId, nick) {
       if (cid) {
         const ci = await wg("clans/info", { clan_id: cid, fields: "tag" });
         clanTag = ci[String(cid)] && ci[String(cid)].tag;
-        // colore della lega della stagione clan battles più recente
+        // colore della lega clan: se c'è una stagione in corso uso quella,
+        // altrimenti (pausa) la lega dell'ultima stagione conclusa.
         try {
           const se = await wg("clans/season", { clan_id: cid });
           const root = (se && se[String(cid)]) || se;
           if (root && typeof root === "object") {
-            let best = null, bestTime = -1;
+            const now = Math.floor(Date.now() / 1000);
+            let ongoing = null, ongoingStart = -1;   // stagione in corso
+            let lastDone = null, lastDoneFinish = -1; // ultima conclusa
             for (const sid in root) {
               const s = root[sid];
-              const ft = s && (s.finish_time || s.start_time || 0);
               const leagues = s && s.leagues;
-              if (leagues && leagues.length && ft > bestTime) {
-                bestTime = ft; best = leagues[0];
+              if (!leagues || !leagues.length) continue;
+              const start = s.start_time || 0;
+              const finish = s.finish_time || 0;
+              const isOngoing = start && start <= now && (!finish || finish > now);
+              if (isOngoing) {
+                if (start > ongoingStart) { ongoingStart = start; ongoing = leagues[0]; }
+              } else if (finish && finish <= now) {
+                if (finish > lastDoneFinish) { lastDoneFinish = finish; lastDone = leagues[0]; }
               }
             }
-            if (best && best.color) _clanColor = best.color;
+            const chosen = ongoing || lastDone;
+            if (chosen && chosen.color) _clanColor = chosen.color;
           }
         } catch (_) { /* lega opzionale */ }
       }
