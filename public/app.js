@@ -35,6 +35,7 @@ const I18N = {
     footer: 'Wows Stats \u2014 data via the Wargaming Public API.',
     types: { Destroyer: "Destroyer", Cruiser: "Cruiser", Battleship: "Battleship", AirCarrier: "Aircraft Carrier", Submarine: "Submarine" },
     prLabels: ["\u2014", "Bad", "Below average", "Average", "Good", "Very good", "Great", "Unicum", "Super unicum"],
+    sinceLast: "Since your last visit", ago: d => d===0?"today":(d===1?"1 day ago":d+" days ago"), sessionWR: "Session WR", newBattles: "new battles", firstVisit: "First time you look up this player \u2014 progress will show from your next visit.",
     compareTitle: "Compare two players", compareBtn: "COMPARE", vs: "VS", compareP1: "Player 1", compareP2: "Player 2", compareGo: "Compare", compareShip: "Compare a ship", compareNoCommon: "No ships in common between these two players.", backToSearch: "\u2190 Back to search", winner: "better",
   },
   it: {
@@ -64,6 +65,7 @@ const I18N = {
     footer: 'Wows Stats \u2014 dati via Wargaming Public API.',
     types: { Destroyer: "Cacciatorpediniere", Cruiser: "Incrociatore", Battleship: "Corazzata", AirCarrier: "Portaerei", Submarine: "Sottomarino" },
     prLabels: ["\u2014", "Pessimo", "Sotto media", "Nella media", "Buono", "Molto buono", "Ottimo", "Unicum", "Super unicum"],
+    sinceLast: "Dalla tua ultima visita", ago: d => d===0?"oggi":(d===1?"1 giorno fa":d+" giorni fa"), sessionWR: "WR di sessione", newBattles: "nuove battaglie", firstVisit: "Prima volta che cerchi questo giocatore \u2014 il progresso apparir\u00e0 dalla prossima visita.",
     compareTitle: "Confronta due giocatori", compareBtn: "CONFRONTA", vs: "VS", compareP1: "Giocatore 1", compareP2: "Giocatore 2", compareGo: "Confronta", compareShip: "Confronta una nave", compareNoCommon: "Nessuna nave in comune tra questi due giocatori.", backToSearch: "\u2190 Torna alla ricerca", winner: "meglio",
   },
   fr: {
@@ -93,6 +95,7 @@ const I18N = {
     footer: 'Wows Stats \u2014 donn\u00e9es via Wargaming Public API.',
     types: { Destroyer: "Destroyer", Cruiser: "Croiseur", Battleship: "Cuirass\u00e9", AirCarrier: "Porte-avions", Submarine: "Sous-marin" },
     prLabels: ["\u2014", "Mauvais", "Sous la moyenne", "Moyen", "Bon", "Tr\u00e8s bon", "Excellent", "Unicum", "Super unicum"],
+    sinceLast: "Depuis votre derni\u00e8re visite", ago: d => d===0?"aujourd\u0027hui":(d===1?"il y a 1 jour":"il y a "+d+" jours"), sessionWR: "WR de session", newBattles: "nouvelles batailles", firstVisit: "Premi\u00e8re fois que vous consultez ce joueur \u2014 la progression appara\u00eetra d\u00e8s votre prochaine visite.",
     compareTitle: "Comparer deux joueurs", compareBtn: "COMPARER", vs: "VS", compareP1: "Joueur 1", compareP2: "Joueur 2", compareGo: "Comparer", compareShip: "Comparer un navire", compareNoCommon: "Aucun navire en commun entre ces deux joueurs.", backToSearch: "\u2190 Retour \u00e0 la recherche", winner: "meilleur",
   },
   de: {
@@ -122,6 +125,7 @@ const I18N = {
     footer: 'Wows Stats \u2014 Daten via Wargaming Public API.',
     types: { Destroyer: "Zerst\u00f6rer", Cruiser: "Kreuzer", Battleship: "Schlachtschiff", AirCarrier: "Flugzeugtr\u00e4ger", Submarine: "U-Boot" },
     prLabels: ["\u2014", "Schlecht", "Unterdurchschnittlich", "Durchschnittlich", "Gut", "Sehr gut", "Hervorragend", "Unicum", "Super-Unicum"],
+    sinceLast: "Seit deinem letzten Besuch", ago: d => d===0?"heute":(d===1?"vor 1 Tag":"vor "+d+" Tagen"), sessionWR: "Sitzungs-WR", newBattles: "neue Gefechte", firstVisit: "Erstes Mal, dass du diesen Spieler ansiehst \u2014 Fortschritt erscheint ab deinem n\u00e4chsten Besuch.",
     compareTitle: "Zwei Spieler vergleichen", compareBtn: "VERGLEICHEN", vs: "VS", compareP1: "Spieler 1", compareP2: "Spieler 2", compareGo: "Vergleichen", compareShip: "Schiff vergleichen", compareNoCommon: "Keine gemeinsamen Schiffe zwischen diesen beiden Spielern.", backToSearch: "\u2190 Zur\u00fcck zur Suche", winner: "besser",
   },
   es: {
@@ -151,6 +155,7 @@ const I18N = {
     footer: 'Wows Stats \u2014 datos via Wargaming Public API.',
     types: { Destroyer: "Destructor", Cruiser: "Crucero", Battleship: "Acorazado", AirCarrier: "Portaaviones", Submarine: "Submarino" },
     prLabels: ["\u2014", "Malo", "Bajo la media", "Medio", "Bueno", "Muy bueno", "Excelente", "Unicum", "S\u00faper unicum"],
+    sinceLast: "Desde tu \u00faltima visita", ago: d => d===0?"hoy":(d===1?"hace 1 d\u00eda":"hace "+d+" d\u00edas"), sessionWR: "WR de sesi\u00f3n", newBattles: "nuevas batallas", firstVisit: "Primera vez que consultas a este jugador \u2014 el progreso aparecer\u00e1 desde tu pr\u00f3xima visita.",
     compareTitle: "Comparar dos jugadores", compareBtn: "COMPARAR", vs: "VS", compareP1: "Jugador 1", compareP2: "Jugador 2", compareGo: "Comparar", compareShip: "Comparar un barco", compareNoCommon: "Ning\u00fan barco en com\u00fan entre estos dos jugadores.", backToSearch: "\u2190 Volver a la b\u00fasqueda", winner: "mejor",
   },
 };
@@ -511,6 +516,7 @@ function renderProfile(player, clanTag, ships) {
   }
 
   // contenitore che verrà riempito in base alla modalità attiva
+  html += `<div id="progressBox"></div>`;
   html += `<div id="modeContent"></div>`;
 
   els.profile.innerHTML = html;
@@ -519,6 +525,50 @@ function renderProfile(player, clanTag, ships) {
   bindModeTabs();
   drawMode();  // disegna la modalità attiva (stat + tabella navi)
   window.scrollTo({ top: 0, behavior: "smooth" });
+
+  loadProgress(player);  // "progresso dall'ultima visita" (se DB attivo)
+}
+
+/* Progresso dall'ultima visita: invia i totali correnti al server, che
+   restituisce lo snapshot precedente; mostriamo la differenza. */
+async function loadProgress(player) {
+  const box = document.getElementById("progressBox");
+  if (!box) return;
+  const s = modeStats(player, "pvp");
+  if (!s || !s.battles) return;  // niente Random, niente progresso
+  try {
+    const q = new URLSearchParams({
+      account_id: player.account_id,
+      nickname: player.nickname || "",
+      battles: s.battles, wins: s.wins,
+      damage: s.damage_dealt, frags: s.frags,
+    });
+    const r = await fetch(`/api/progress?${q}`);
+    const data = await r.json();
+    if (!data.enabled) return;            // DB non configurato
+    const prev = data.previous;
+    if (!prev) {                          // prima visita
+      box.innerHTML = `<div class="progress-note">${t("firstVisit")}</div>`;
+      return;
+    }
+    const db = s.battles - prev.battles;  // nuove battaglie
+    if (db <= 0) return;                  // nessuna nuova partita: non mostro nulla
+    const dw = s.wins - prev.wins;
+    const dd = s.damage_dealt - prev.damage;
+    const df = s.frags - prev.frags;
+    const days = Math.max(0, Math.round((Date.now() / 1000 - prev.ts) / 86400));
+    const sessWR = db ? dw / db * 100 : 0;
+    box.innerHTML = `
+      <div class="progress-box">
+        <div class="progress-head">${t("sinceLast")} · <span>${t("ago", days)}</span></div>
+        <div class="progress-stats">
+          <div><b>+${fmt(db)}</b><span>${t("newBattles")}</span></div>
+          <div><b style="color:${wrColor(sessWR)}">${fmt(sessWR, 1)}%</b><span>${t("sessionWR")}</span></div>
+          <div><b>${fmt(dd / db)}</b><span>${t("avgDamage")}</span></div>
+          <div><b>${fmt(df / db, 2)}</b><span>${t("avgFrags")}</span></div>
+        </div>
+      </div>`;
+  } catch (_) { /* progresso opzionale */ }
 }
 
 function bindModeTabs() {

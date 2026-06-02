@@ -146,3 +146,20 @@ tbody tr:hover{background:var(--card-2);}
   .pnick{font-size:28px;}
   .topbar{padding:12px 16px;}
 }
+
+/* ---------- progresso dall'ultima visita ---------- */
+.progress-note{
+  background:var(--card-2);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px 18px;margin:22px 0 0;color:var(--txt-dim);font-size:14px;
+}
+.progress-box{
+  background:linear-gradient(135deg,#eef5ff,#ffffff);
+  border:1px solid #cfe2ff;border-radius:var(--radius-lg);
+  padding:18px 22px;margin:22px 0 0;box-shadow:var(--shadow-sm);
+}
+.progress-head{font-family:var(--mono);font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--txt-faint);margin-bottom:14px;}
+.progress-head span{color:var(--blue);}
+.progress-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:16px;}
+.progress-stats > div{display:flex;flex-direction:column;}
+.progress-stats b{font-family:var(--sys);font-weight:600;font-size:24px;letter-spacing:-0.02em;color:var(--txt);}
+.progress-stats span{font-family:var(--mono);font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--txt-faint);margin-top:4px;}
