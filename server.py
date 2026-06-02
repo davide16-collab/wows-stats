@@ -90,6 +90,24 @@ def db_init():
                         ts           BIGINT
                     )
                 """)
+                # Valutazione Clan Battles per clan (Strada A: API ufficiale).
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS clan_cb (
+                        clan_id    BIGINT PRIMARY KEY,
+                        tag        TEXT,
+                        name       TEXT,
+                        nation     TEXT,
+                        season_id  INTEGER,
+                        rating     INTEGER,
+                        league     INTEGER,
+                        division   INTEGER,
+                        div_rating INTEGER,
+                        battles    BIGINT,
+                        wins       BIGINT,
+                        ts         BIGINT
+                    )
+                """)
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_clan_cb_rating ON clan_cb (rating)")
             conn.commit()
         _db_ready = True
     except Exception as e:  # noqa
@@ -429,6 +447,75 @@ def db_leaderboard_clans(offset=0, limit=50, sort="wr"):
         return {"rows": rows, "total": total}
 
 
+def db_save_clan_cb(clan_id, tag, name, nation, cb):
+    """Salva/aggiorna la valutazione Clan Battles di un clan."""
+    if not DATABASE_URL or not clan_id or not cb:
+        return False
+    with _db_lock:
+        if not db_init():
+            return False
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO clan_cb (clan_id, tag, name, nation, season_id,
+                                             rating, league, division, div_rating,
+                                             battles, wins, ts)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT (clan_id) DO UPDATE SET
+                            tag=EXCLUDED.tag, name=EXCLUDED.name,
+                            nation=COALESCE(EXCLUDED.nation, clan_cb.nation),
+                            season_id=EXCLUDED.season_id, rating=EXCLUDED.rating,
+                            league=EXCLUDED.league, division=EXCLUDED.division,
+                            div_rating=EXCLUDED.div_rating, battles=EXCLUDED.battles,
+                            wins=EXCLUDED.wins, ts=EXCLUDED.ts
+                    """, (clan_id, tag, name, nation, cb.get("season_id"),
+                          int(cb.get("public_rating") or 0), cb.get("league"),
+                          cb.get("division"), int(cb.get("division_rating") or 0),
+                          int(cb.get("battles") or 0), int(cb.get("wins") or 0),
+                          int(time.time())))
+                conn.commit()
+            return True
+        except Exception as e:  # noqa
+            sys.stderr.write("db_save_clan_cb fallita: %s\n" % e)
+            return False
+
+
+def db_cb_leaderboard(nation=None, offset=0, limit=50):
+    """Classifica Clan Battles dei clan indicizzati (per rating). Filtro nazione opzionale."""
+    if not DATABASE_URL:
+        return {"rows": [], "total": 0}
+    with _db_lock:
+        if not db_init():
+            return {"rows": [], "total": 0}
+        rows, total = [], 0
+        where = "WHERE battles > 0"
+        wargs = []
+        if nation:
+            where += " AND nation = %s"
+            wargs = [nation]
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM clan_cb " + where, wargs)
+                    total = int(cur.fetchone()[0] or 0)
+                    cur.execute("""
+                        SELECT clan_id, tag, name, nation, league, division,
+                               div_rating, rating, battles, wins
+                        FROM clan_cb """ + where + """
+                        ORDER BY rating DESC, wins DESC
+                        OFFSET %s LIMIT %s
+                    """, wargs + [offset, limit])
+                    for cid, tag, nm, nat, lg, dv, dr, rt, b, w in cur.fetchall():
+                        rows.append({"clan_id": cid, "tag": tag, "name": nm, "nation": nat,
+                                     "league": lg, "division": dv, "div_rating": dr,
+                                     "rating": rt, "battles": int(b or 0), "wins": int(w or 0),
+                                     "wr": (w / b * 100.0) if b else 0})
+        except Exception as e:  # noqa
+            sys.stderr.write("db_cb_leaderboard fallita: %s\n" % e)
+        return {"rows": rows, "total": total}
+
+
 # ---------------------------------------------------------------------------
 # CONFIGURAZIONE
 # ---------------------------------------------------------------------------
@@ -493,6 +580,21 @@ def fetch_json(url):
     except json.JSONDecodeError:
         msg = raw[:200] if raw else "risposta vuota dall'API"
         return {"status": "error", "error": {"message": f"Risposta non valida dall'API: {msg}"}}
+
+
+def fetch_json_browser(url):
+    """Come fetch_json ma con header da browser: alcuni siti (es. wows-numbers)
+    rifiutano le richieste che non sembrano provenire da un browser."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    req = Request(url, headers=headers)
+    with urlopen(req, timeout=20) as resp:
+        raw = resp.read().decode("utf-8", "replace").strip()
+    return json.loads(raw)
 
 
 def api_base(realm):
@@ -577,7 +679,7 @@ def get_expected():
         base = {}
         # 1) fonte community (auto-aggiornante)
         try:
-            doc = fetch_json(EXPECTED_URL)
+            doc = fetch_json_browser(EXPECTED_URL)
             data = doc.get("data") if isinstance(doc, dict) and "data" in doc else doc
             if isinstance(data, dict):
                 base = {str(k): v for k, v in data.items()
@@ -607,6 +709,124 @@ def get_expected():
         if sid not in table or v.get("_battles", 0) >= DB_OVERRIDE_MIN_BATTLES:
             table[sid] = v
     return table
+
+
+# ---------------------------------------------------------------------------
+# CLAN BATTLES (Strada A: API ufficiale clans/season + clans/seasonstats)
+# ---------------------------------------------------------------------------
+CB_LEAGUES = {0: "Hurricane", 1: "Typhoon", 2: "Storm", 3: "Gale", 4: "Squall"}
+
+# La nazionalita' dei clan non esiste nell'API: lista curata, estendibile con
+# un file 'clan_nations.json' in radice -> { "TAG": "it", ... } (tag MAIUSCOLO).
+CLAN_NATIONS_DEFAULT = {"SN41": "it"}
+
+
+def clan_nations():
+    table = dict(CLAN_NATIONS_DEFAULT)
+    path = os.path.join(HERE, "clan_nations.json")
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                doc = json.load(f)
+            if isinstance(doc, dict):
+                for k, v in doc.items():
+                    table[str(k).upper()] = str(v).lower()
+        except Exception as e:  # noqa
+            sys.stderr.write("Lettura clan_nations.json fallita: %s\n" % e)
+    return table
+
+
+def get_cb_season(realm):
+    """Id della stagione di Clan Battles piu' recente (cache lunga)."""
+    ckey = "cb_season:" + realm
+    cached = _cache_get(ckey)
+    if cached is not None:
+        return cached
+    season_id = None
+    try:
+        doc = fetch_json(build_wg_url(realm, "clans/season", {}))
+        data = doc.get("data") if isinstance(doc, dict) else None
+        ids = []
+        if isinstance(data, dict):
+            for k, v in data.items():
+                try:
+                    ids.append(int(k))
+                except Exception:
+                    if isinstance(v, dict) and v.get("season_id") is not None:
+                        ids.append(int(v["season_id"]))
+        elif isinstance(data, list):
+            for v in data:
+                if isinstance(v, dict) and v.get("season_id") is not None:
+                    ids.append(int(v["season_id"]))
+        if ids:
+            season_id = max(ids)
+    except Exception as e:  # noqa
+        sys.stderr.write("get_cb_season fallita: %s\n" % e)
+    _cache_set(ckey, season_id)
+    return season_id
+
+
+def fetch_clan_cb(realm, clan_id, season_id):
+    """Valutazione Clan Battles di un clan per la stagione data. Parsing difensivo
+    (i nomi esatti dei campi si confermano via /api/cb/debug). Dict o None."""
+    if not clan_id:
+        return None
+    try:
+        doc = fetch_json(build_wg_url(realm, "clans/seasonstats", {"clan_id": clan_id}))
+    except Exception as e:  # noqa
+        sys.stderr.write("fetch_clan_cb fallita: %s\n" % e)
+        return None
+    if not isinstance(doc, dict) or doc.get("status") != "ok":
+        return None
+    data = doc.get("data") or {}
+    entry = data.get(str(clan_id)) if isinstance(data, dict) else None
+    if entry is None:
+        return None
+
+    # raccogli ricorsivamente le voci stagione/squadra in una lista piatta
+    cand = []
+
+    def collect(x):
+        if isinstance(x, list):
+            for it in x:
+                collect(it)
+        elif isinstance(x, dict):
+            if "season_id" in x or "public_rating" in x or "league" in x:
+                cand.append(x)
+            else:
+                for v in x.values():
+                    collect(v)
+
+    collect(entry)
+    if season_id is not None:
+        filt = [x for x in cand if str(x.get("season_id")) == str(season_id)]
+        if filt:
+            cand = filt
+    if not cand:
+        return None
+
+    def g(x, *keys):
+        for k in keys:
+            v = x.get(k)
+            if isinstance(v, (int, float)):
+                return v
+        return None
+
+    def rating_of(x):
+        r = g(x, "public_rating", "rating", "division_rating")
+        return r if r is not None else -1
+
+    best = max(cand, key=rating_of)
+    sid = g(best, "season_id")
+    return {
+        "season_id": sid if sid is not None else season_id,
+        "public_rating": g(best, "public_rating", "rating") or 0,
+        "league": g(best, "league"),
+        "division": g(best, "division"),
+        "division_rating": g(best, "division_rating") or 0,
+        "battles": int(g(best, "battles_count", "battles") or 0),
+        "wins": int(g(best, "wins_count", "wins") or 0),
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -666,6 +886,51 @@ class Handler(BaseHTTPRequestHandler):
 
             if path == "/api/expected":
                 self.send_json({"status": "ok", "data": get_expected()})
+                return
+
+            if path == "/api/leaderboard/cb":
+                nation = (qs.get("nation", [""])[0] or "").lower().strip() or None
+                try:
+                    offset = max(0, int(qs.get("offset", ["0"])[0]))
+                    limit = min(100, max(1, int(qs.get("limit", ["50"])[0])))
+                except Exception:
+                    offset, limit = 0, 50
+                res = db_cb_leaderboard(nation, offset, limit)
+                self.send_json({"status": "ok", "enabled": bool(DATABASE_URL),
+                                "season_id": get_cb_season(realm),
+                                "rows": res["rows"], "total": res["total"]})
+                return
+
+            if path == "/api/cb/debug":
+                try:
+                    cid = int(qs.get("clan_id", ["0"])[0])
+                except Exception:
+                    cid = 0
+                tag = (qs.get("tag", [""])[0] or "").strip()
+                search_raw = None
+                if not cid and tag:
+                    try:
+                        search_raw = fetch_json(build_wg_url(realm, "clans/list", {"search": tag, "limit": 10}))
+                        for c in (search_raw.get("data") or []):
+                            if str(c.get("tag", "")).upper() == tag.upper():
+                                cid = int(c.get("clan_id") or 0)
+                                break
+                        if not cid and (search_raw.get("data") or []):
+                            cid = int(search_raw["data"][0].get("clan_id") or 0)
+                    except Exception as e:  # noqa
+                        search_raw = {"error": str(e)}
+                season = get_cb_season(realm)
+                seasonstats_raw = None
+                if cid:
+                    try:
+                        seasonstats_raw = fetch_json(build_wg_url(realm, "clans/seasonstats", {"clan_id": cid}))
+                    except Exception as e:  # noqa
+                        seasonstats_raw = {"error": str(e)}
+                self.send_json({"status": "ok", "clan_id": cid, "season_id": season,
+                                "search_raw": search_raw,
+                                "season_raw": fetch_json(build_wg_url(realm, "clans/season", {})),
+                                "seasonstats_raw": seasonstats_raw,
+                                "parsed": fetch_clan_cb(realm, cid, season) if cid else None})
                 return
 
             if path == "/api/config":
@@ -780,6 +1045,15 @@ class Handler(BaseHTTPRequestHandler):
                     int(data.get("battles", 0)), float(data.get("avg_wr", 0)),
                     float(data.get("avg_damage", 0)), float(data.get("avg_frags", 0)),
                 ) if cid else False
+                if cid:
+                    try:
+                        season = get_cb_season(DEFAULT_REALM)
+                        cb = fetch_clan_cb(DEFAULT_REALM, cid, season) if season is not None else None
+                        if cb:
+                            nat = clan_nations().get(str(data.get("tag", "")).upper())
+                            db_save_clan_cb(cid, data.get("tag", ""), data.get("name", ""), nat, cb)
+                    except Exception:
+                        pass
                 self.send_json({"status": "ok", "saved": ok, "enabled": bool(DATABASE_URL)})
                 return
 
