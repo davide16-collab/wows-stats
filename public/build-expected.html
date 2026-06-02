@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wows Stats — Costruisci valori attesi</title>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;700&family=Saira:wght@400;500;600&family=Spline+Sans+Mono:wght@500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#08141d; --panel:#0e2331; --panel2:#102a3b; --line:#1c3a4d;
+    --txt:#cfe0ec; --dim:#7c95a6; --faint:#56707f; --amber:#f6a623; --teal:#33d6c0; --green:#44b300;
+    --cond:'Saira Condensed',sans-serif; --body:'Saira',sans-serif; --mono:'Spline Sans Mono',monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--body);
+       background-image:radial-gradient(60% 50% at 50% -10%,rgba(246,166,35,.10),transparent 60%);
+       min-height:100vh;padding:32px 20px;}
+  .wrap{max-width:760px;margin:0 auto;}
+  h1{font-family:var(--cond);font-weight:700;letter-spacing:1px;font-size:32px;margin:0 0 6px;}
+  h1 .a{color:var(--amber);}
+  .sub{color:var(--dim);margin:0 0 26px;line-height:1.5;}
+  .card{background:linear-gradient(135deg,var(--panel2),var(--panel));border:1px solid var(--line);
+        border-radius:12px;padding:22px 24px;margin-bottom:18px;}
+  label{display:block;font-family:var(--mono);font-size:12px;letter-spacing:1px;text-transform:uppercase;
+        color:var(--faint);margin-bottom:6px;}
+  input,select{background:var(--bg);border:1px solid var(--line);color:var(--txt);
+        padding:10px 12px;border-radius:8px;font-family:var(--body);font-size:15px;width:100%;outline:none;}
+  input:focus,select:focus{border-color:var(--amber);}
+  .row{display:flex;gap:16px;flex-wrap:wrap;}
+  .row > div{flex:1;min-width:180px;}
+  .btn{background:var(--amber);color:#1a1206;border:none;font-family:var(--cond);font-weight:700;
+       letter-spacing:1px;font-size:16px;padding:13px 26px;border-radius:8px;cursor:pointer;margin-top:4px;}
+  .btn:hover{background:#ffb84d;}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .btn.secondary{background:var(--panel2);color:var(--txt);border:1px solid var(--line);}
+  .btn.secondary:hover{background:var(--line);}
+  .btns{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:6px;}
+  .stat{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:14px 16px;}
+  .stat .k{font-family:var(--mono);font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);}
+  .stat .v{font-family:var(--cond);font-weight:700;font-size:26px;margin-top:4px;}
+  .bar{height:8px;background:var(--bg);border-radius:5px;overflow:hidden;margin-top:14px;border:1px solid var(--line);}
+  .bar > div{height:100%;background:linear-gradient(90deg,var(--amber),var(--teal));width:0;transition:width .3s;}
+  .log{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-top:14px;
+       font-family:var(--mono);font-size:12px;color:var(--dim);max-height:160px;overflow:auto;line-height:1.6;}
+  .done{color:var(--green);}
+  a.home{color:var(--dim);font-family:var(--mono);font-size:13px;text-decoration:none;}
+  a.home:hover{color:var(--amber);}
+  .note{font-size:13px;color:var(--faint);line-height:1.5;margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="home" href="/">&larr; Torna al sito</a>
+  <h1>Costruisci i <span class="a">valori attesi</span></h1>
+  <p class="sub">Questa pagina campiona giocatori reali tramite l'API Wargaming e calcola
+  le medie per nave (danno, frag, win rate). Servono a calcolare il Personal Rating.
+  Al termine scarichi <b>expected.json</b> e lo carichi nel progetto.</p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>Realm</label>
+        <select id="realm">
+          <option value="eu" selected>EU</option>
+          <option value="na">NA</option>
+          <option value="asia">ASIA</option>
+        </select>
+      </div>
+      <div>
+        <label>Giocatori da campionare (obiettivo)</label>
+        <input id="target" type="number" value="5000" min="500" step="500" />
+      </div>
+    </div>
+    <p class="note">Più giocatori = medie più solide, ma ci vuole più tempo. 5.000 è un buon
+    compromesso (qualche minuto). Puoi premere <b>Ferma</b> quando vuoi: i dati raccolti fin lì restano validi.</p>
+    <div class="btns">
+      <button class="btn" id="startBtn">Avvia raccolta</button>
+      <button class="btn secondary" id="stopBtn" disabled>Ferma</button>
+      <button class="btn secondary" id="dlBtn" disabled>Scarica expected.json</button>
+    </div>
+  </div>
+
+  <div class="card" id="progressCard" style="display:none">
+    <div class="stats">
+      <div class="stat"><div class="k">Account provati</div><div class="v" id="sTried">0</div></div>
+      <div class="stat"><div class="k">Giocatori validi</div><div class="v" id="sValid" style="color:var(--teal)">0</div></div>
+      <div class="stat"><div class="k">Navi coperte</div><div class="v" id="sShips">0</div></div>
+      <div class="stat"><div class="k">Stato</div><div class="v" id="sState" style="font-size:18px">—</div></div>
+    </div>
+    <div class="bar"><div id="barFill"></div></div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const realmSel = $("realm");
+
+// Range ID per realm (approssimati, sufficienti a trovare account reali).
+const ID_RANGES = {
+  eu:   [500000000, 580000000],
+  na:   [1000000000, 1080000000],
+  asia: [2000000000, 2030000000],
+};
+
+let running = false;
+let tried = 0, valid = 0;
+// accumulatori per nave: { ship_id: {players, dmg, frags, wins, battles} }
+const acc = {};
+
+function log(msg, cls="") {
+  const el = $("log");
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function randId(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo)); }
+
+async function wgCall(endpoint, params) {
+  const realm = realmSel.value;
+  const q = new URLSearchParams({ ...params, realm });
+  const r = await fetch(`/api/wg/${endpoint}?${q}`);
+  return r.json();
+}
+
+// Processa un blocco di ID: prima account/info per trovare quelli pubblici con battaglie,
+// poi ships/stats per le navi.
+async function processBatch(ids) {
+  const idStr = ids.join(",");
+  let info;
+  try {
+    info = await wgCall("account/info", {
+      account_id: idStr,
+      fields: "account_id,hidden_profile,statistics.pvp.battles",
+    });
+  } catch (_) { return; }
+  if (info.status !== "ok" || !info.data) return;
+
+  const goodIds = [];
+  for (const id in info.data) {
+    const p = info.data[id];
+    if (p && !p.hidden_profile && p.statistics && p.statistics.pvp && p.statistics.pvp.battles > 20) {
+      goodIds.push(id);
+    }
+  }
+  if (!goodIds.length) return;
+
+  // ships/stats accetta un solo account_id per chiamata → li faccio uno per uno (ma solo i buoni)
+  for (const id of goodIds) {
+    if (!running) break;
+    try {
+      const ss = await wgCall("ships/stats", {
+        account_id: id,
+        fields: "ship_id,pvp.battles,pvp.wins,pvp.damage_dealt,pvp.frags",
+      });
+      const arr = ss.data && ss.data[id];
+      if (!arr) continue;
+      valid++;
+      for (const sh of arr) {
+        const p = sh.pvp;
+        if (!p || !p.battles) continue;
+        const k = sh.ship_id;
+        if (!acc[k]) acc[k] = { players: 0, dmg: 0, frags: 0, wins: 0, battles: 0 };
+        acc[k].players++;
+        acc[k].dmg += p.damage_dealt;
+        acc[k].frags += p.frags;
+        acc[k].wins += p.wins;
+        acc[k].battles += p.battles;
+      }
+    } catch (_) { /* salta */ }
+    await sleep(120); // pausa per non superare il limite richieste/secondo
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function updateUI() {
+  $("sTried").textContent = tried.toLocaleString("it-IT");
+  $("sValid").textContent = valid.toLocaleString("it-IT");
+  $("sShips").textContent = Object.keys(acc).length;
+  const target = +$("target").value || 5000;
+  $("barFill").style.width = Math.min(100, valid / target * 100) + "%";
+}
+
+async function run() {
+  const [lo, hi] = ID_RANGES[realmSel.value];
+  const target = +$("target").value || 5000;
+  while (running && valid < target) {
+    // genero un blocco di 100 ID casuali
+    const ids = [];
+    for (let i = 0; i < 100; i++) ids.push(randId(lo, hi));
+    await processBatch(ids);
+    tried += 100;
+    updateUI();
+    if (tried % 500 === 0) log(`Provati ${tried} account → ${valid} giocatori validi, ${Object.keys(acc).length} navi`);
+    await sleep(80);
+  }
+  finish();
+}
+
+function finish() {
+  running = false;
+  $("startBtn").disabled = false;
+  $("stopBtn").disabled = true;
+  $("dlBtn").disabled = Object.keys(acc).length === 0;
+  $("sState").textContent = "Pronto";
+  $("sState").style.color = "var(--green)";
+  log(`Raccolta terminata: ${valid} giocatori, ${Object.keys(acc).length} navi. Ora puoi scaricare expected.json`, "done");
+}
+
+function buildExpected() {
+  // formato compatibile col sito: { data: { ship_id: {average_damage_dealt, average_frags, win_rate} } }
+  const data = {};
+  for (const k in acc) {
+    const a = acc[k];
+    if (a.battles < 1) continue;
+    data[k] = {
+      average_damage_dealt: a.dmg / a.battles,
+      average_frags: a.frags / a.battles,
+      win_rate: a.wins / a.battles * 100,
+      _players: a.players,         // info extra: su quanti giocatori si basa
+    };
+  }
+  return { status: "ok", meta: { players_sampled: valid, ships: Object.keys(data).length }, data };
+}
+
+$("startBtn").onclick = () => {
+  running = true;
+  tried = 0; valid = 0;
+  for (const k in acc) delete acc[k];
+  $("progressCard").style.display = "block";
+  $("startBtn").disabled = true;
+  $("stopBtn").disabled = false;
+  $("dlBtn").disabled = true;
+  $("sState").textContent = "In corso…";
+  $("sState").style.color = "var(--amber)";
+  $("log").innerHTML = "";
+  log("Avvio raccolta…");
+  run();
+};
+
+$("stopBtn").onclick = () => { running = false; log("Interruzione richiesta…"); };
+
+$("dlBtn").onclick = () => {
+  const blob = new Blob([JSON.stringify(buildExpected())], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "expected.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+};
+</script>
+</body>
+</html>
