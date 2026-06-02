@@ -31,6 +31,7 @@ const I18N = {
     noBattlesIn: m => `No battles recorded in ${m}.`,
     shipsPlayed: n => `Ships played (${n})`,
     all: "All", ship: "Ship", tier: "Tier", type: "Type",
+    premiumOnly: "Premium only", searchShip: "Search ship…", noMatch: "No ships match these filters.",
     shipsNoMode: "Per-ship statistics are not available for this mode via the API.",
     footer: 'Wows Stats \u2014 data via the Wargaming Public API.',
     types: { Destroyer: "Destroyer", Cruiser: "Cruiser", Battleship: "Battleship", AirCarrier: "Aircraft Carrier", Submarine: "Submarine" },
@@ -61,6 +62,7 @@ const I18N = {
     noBattlesIn: m => `Nessuna battaglia registrata in ${m}.`,
     shipsPlayed: n => `Navi giocate (${n})`,
     all: "Tutti", ship: "Nave", tier: "Tier", type: "Tipo",
+    premiumOnly: "Solo premium", searchShip: "Cerca nave…", noMatch: "Nessuna nave corrisponde ai filtri.",
     shipsNoMode: "Le statistiche per nave non sono disponibili per questa modalit\u00e0 tramite l'API.",
     footer: 'Wows Stats \u2014 dati via Wargaming Public API.',
     types: { Destroyer: "Cacciatorpediniere", Cruiser: "Incrociatore", Battleship: "Corazzata", AirCarrier: "Portaerei", Submarine: "Sottomarino" },
@@ -91,6 +93,7 @@ const I18N = {
     noBattlesIn: m => `Aucune bataille enregistr\u00e9e en ${m}.`,
     shipsPlayed: n => `Navires jou\u00e9s (${n})`,
     all: "Tous", ship: "Navire", tier: "Tier", type: "Type",
+    premiumOnly: "Premium uniquement", searchShip: "Rechercher un navire…", noMatch: "Aucun navire ne correspond aux filtres.",
     shipsNoMode: "Les statistiques par navire ne sont pas disponibles pour ce mode via l'API.",
     footer: 'Wows Stats \u2014 donn\u00e9es via Wargaming Public API.',
     types: { Destroyer: "Destroyer", Cruiser: "Croiseur", Battleship: "Cuirass\u00e9", AirCarrier: "Porte-avions", Submarine: "Sous-marin" },
@@ -121,6 +124,7 @@ const I18N = {
     noBattlesIn: m => `Keine Gefechte in ${m} verzeichnet.`,
     shipsPlayed: n => `Gespielte Schiffe (${n})`,
     all: "Alle", ship: "Schiff", tier: "Tier", type: "Typ",
+    premiumOnly: "Nur Premium", searchShip: "Schiff suchen…", noMatch: "Keine Schiffe entsprechen den Filtern.",
     shipsNoMode: "Schiffsbezogene Statistiken sind f\u00fcr diesen Modus \u00fcber die API nicht verf\u00fcgbar.",
     footer: 'Wows Stats \u2014 Daten via Wargaming Public API.',
     types: { Destroyer: "Zerst\u00f6rer", Cruiser: "Kreuzer", Battleship: "Schlachtschiff", AirCarrier: "Flugzeugtr\u00e4ger", Submarine: "U-Boot" },
@@ -151,6 +155,7 @@ const I18N = {
     noBattlesIn: m => `Sin batallas registradas en ${m}.`,
     shipsPlayed: n => `Barcos jugados (${n})`,
     all: "Todos", ship: "Barco", tier: "Tier", type: "Tipo",
+    premiumOnly: "Solo premium", searchShip: "Buscar barco…", noMatch: "Ningún barco coincide con los filtros.",
     shipsNoMode: "Las estad\u00edsticas por barco no est\u00e1n disponibles para este modo v\u00eda API.",
     footer: 'Wows Stats \u2014 datos via Wargaming Public API.',
     types: { Destroyer: "Destructor", Cruiser: "Crucero", Battleship: "Acorazado", AirCarrier: "Portaaviones", Submarine: "Submarino" },
@@ -490,7 +495,7 @@ async function loadPlayer(accountId, nick) {
 }
 
 /* ---------- rendering profilo ---------- */
-let _ships = [], _sortKey = "battles", _sortDir = -1, _tierFilter = 0;
+let _ships = [], _sortKey = "battles", _sortDir = -1, _tierFilter = 0, _classFilter = "", _premOnly = false, _nameQuery = "";
 let _player = null, _clanTag = null, _allShips = [], _activeMode = "pvp", _availModes = [];
 let _clanColor = null;
 
@@ -673,6 +678,18 @@ function drawMode() {
           ${tiers.slice(1).map(tr => `<button data-t="${tr}">${roman(tr)}</button>`).join("")}
         </div>
       </div>
+      <div class="ships-controls">
+        <div class="class-filter" id="classFilter">
+          <button data-c="" class="on">${t("all")}</button>
+          <button data-c="Destroyer" title="${t("types").Destroyer}">${classIcon("Destroyer")}</button>
+          <button data-c="Cruiser" title="${t("types").Cruiser}">${classIcon("Cruiser")}</button>
+          <button data-c="Battleship" title="${t("types").Battleship}">${classIcon("Battleship")}</button>
+          <button data-c="AirCarrier" title="${t("types").AirCarrier}">${classIcon("AirCarrier")}</button>
+          <button data-c="Submarine" title="${t("types").Submarine}">${classIcon("Submarine")}</button>
+        </div>
+        <button class="prem-toggle" id="premToggle" type="button">${t("premiumOnly")}</button>
+        <input type="text" id="shipSearch" class="ship-search" placeholder="${t("searchShip")}" spellcheck="false" autocomplete="off">
+      </div>
       <div class="table-wrap"><table>
         <thead><tr>
           <th class="left" data-k="name">${t("ship")}</th>
@@ -696,6 +713,7 @@ function drawMode() {
   if (modeShips.length) {
     _ships = modeShips.map(s => enrichShip(s, key));
     _sortKey = "battles"; _sortDir = -1; _tierFilter = 0;
+    _classFilter = ""; _premOnly = false; _nameQuery = "";
     bindTable();
     drawShips();
   }
@@ -754,6 +772,21 @@ function bindTable() {
     [...$("#tierFilter").children].forEach(b => b.classList.toggle("on", b === btn));
     drawShips();
   });
+  const cf = $("#classFilter");
+  if (cf) cf.addEventListener("click", e => {
+    const btn = e.target.closest("button"); if (!btn) return;
+    _classFilter = btn.dataset.c || "";
+    [...cf.children].forEach(b => b.classList.toggle("on", b === btn));
+    drawShips();
+  });
+  const pt = $("#premToggle");
+  if (pt) pt.addEventListener("click", () => {
+    _premOnly = !_premOnly;
+    pt.classList.toggle("on", _premOnly);
+    drawShips();
+  });
+  const ss = $("#shipSearch");
+  if (ss) ss.addEventListener("input", () => { _nameQuery = ss.value.trim(); drawShips(); });
   document.querySelectorAll("thead th").forEach(th => {
     th.onclick = () => {
       const k = th.dataset.k;
@@ -768,6 +801,9 @@ function bindTable() {
 function drawShips() {
   let rows = _ships.slice();
   if (_tierFilter) rows = rows.filter(s => s.tier === _tierFilter);
+  if (_classFilter) rows = rows.filter(s => s.type === _classFilter);
+  if (_premOnly) rows = rows.filter(s => s.premium);
+  if (_nameQuery) { const q = _nameQuery.toLowerCase(); rows = rows.filter(s => (s.name || "").toLowerCase().includes(q)); }
   rows.sort((a, b) => {
     let x = a[_sortKey], y = b[_sortKey];
     if (typeof x === "string") { x = x.toLowerCase(); y = (y || "").toLowerCase(); return x < y ? -_sortDir : x > y ? _sortDir : 0; }
@@ -775,6 +811,7 @@ function drawShips() {
     return (x - y) * _sortDir;
   });
   const body = $("#shipBody");
+  if (!rows.length) { const cols = SHOW_PR ? 8 : 7; body.innerHTML = `<tr><td colspan="${cols}" class="left" style="text-align:center;color:var(--txt-dim);padding:22px">${t("noMatch")}</td></tr>`; return; }
   body.innerHTML = rows.map(s => {
     const prc = prColor(s.pr || 0);
     return `<tr>

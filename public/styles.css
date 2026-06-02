@@ -132,6 +132,17 @@ a:hover{text-decoration:underline;}
 .tier-filter button{background:var(--card);border:1px solid var(--line-2);color:var(--txt-dim);font-family:var(--mono);font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer;transition:all .12s;}
 .tier-filter button:hover{border-color:var(--blue);color:var(--blue);}
 .tier-filter button.on{background:var(--blue);border-color:var(--blue);color:#fff;}
+.ships-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 14px;}
+.class-filter{display:flex;gap:4px;flex-wrap:wrap;}
+.class-filter button{display:inline-flex;align-items:center;justify-content:center;background:var(--card);border:1px solid var(--line-2);color:var(--txt-dim);font-family:var(--mono);font-size:12px;height:32px;min-width:34px;padding:0 9px;border-radius:8px;cursor:pointer;transition:all .12s;}
+.class-filter button:hover{border-color:var(--blue);color:var(--blue);}
+.class-filter button.on{background:var(--blue);border-color:var(--blue);color:#fff;}
+.class-filter .cls-ic{width:22px;height:22px;margin:0;vertical-align:middle;}
+.prem-toggle{background:var(--card);border:1px solid var(--line-2);color:var(--txt-dim);font-family:var(--body);font-weight:500;font-size:13px;height:32px;padding:0 13px;border-radius:8px;cursor:pointer;transition:all .12s;}
+.prem-toggle:hover{border-color:#b25000;color:#b25000;}
+.prem-toggle.on{background:#b25000;border-color:#b25000;color:#fff;}
+.ship-search{margin-left:auto;background:var(--bg);border:1px solid var(--line-2);color:var(--txt);padding:7px 14px;font-size:14px;border-radius:980px;outline:none;font-family:var(--body);min-width:170px;transition:border-color .15s;}
+.ship-search:focus{border-color:var(--blue);}
 .table-wrap{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-lg);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;box-shadow:var(--shadow-sm);}
 .table-wrap::-webkit-scrollbar{height:7px;}
 .table-wrap::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:4px;}
@@ -208,6 +219,7 @@ tbody tr:hover{background:var(--card-2);}
   .cls-ic{margin-right:4px;}
   .lb-shiphead img{height:36px;}
   .lb-shiphead .sh-name{font-size:16px;}
+  .ship-search{margin-left:0;flex:1 1 100%;}
 }
 
 /* ---------- progresso dall'ultima visita ---------- */
