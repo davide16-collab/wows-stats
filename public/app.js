@@ -37,13 +37,13 @@ async function loadStatic() {
 }
 
 /* ---------- modalità di gioco ---------- */
-/* key = nome del campo nell'API; label = etichetta del tab. */
+/* key = nome del campo nell'API; label = etichetta del tab.
+   Campi validi e documentati per WoWS: pvp (Random), pvp_solo, pvp_div2,
+   pvp_div3, rank_solo (Ranked), pve / pve_solo / pve_div2 / pve_div3 (Co-op). */
 const MODES = [
   { key: "pvp", label: "Random" },
   { key: "rank_solo", label: "Ranked" },
-  { key: "pve", label: "Operazioni" },
-  { key: "oper_solo", label: "Operazioni (solo)" },
-  { key: "club", label: "Brawl" },
+  { key: "pve", label: "Co-op" },
 ];
 
 /* ---------- scale colori ---------- */
@@ -163,13 +163,11 @@ async function loadPlayer(accountId, nick) {
   showStatus(`<div class="spinner"></div>Carico le statistiche di ${nick || accountId}&hellip;`);
   try {
     await loadStatic();
-    const modeFields = MODES.map(m =>
-      `statistics.${m.key}.battles,statistics.${m.key}.wins,statistics.${m.key}.damage_dealt,` +
-      `statistics.${m.key}.frags,statistics.${m.key}.survived_battles,statistics.${m.key}.xp`
-    ).join(",");
+    // Chiedo l'oggetto 'statistics' completo: così l'API restituisce solo le
+    // modalità che esistono per quel giocatore, senza errori INVALID_FIELDS.
     const info = await wg("account/info", {
       account_id: accountId,
-      fields: "nickname,account_id,created_at,last_battle_time,hidden_profile,leveling_tier," + modeFields,
+      fields: "nickname,account_id,created_at,last_battle_time,hidden_profile,leveling_tier,statistics",
     });
     const player = info[String(accountId)];
     if (!player) throw new Error("Profilo non disponibile.");
@@ -187,14 +185,19 @@ async function loadPlayer(accountId, nick) {
 
     let ships = [];
     if (!player.hidden_profile) {
-      const shipModeFields = MODES.map(m =>
-        `${m.key}.battles,${m.key}.wins,${m.key}.damage_dealt,${m.key}.frags,${m.key}.survived_battles,${m.key}.xp`
-      ).join(",");
-      const ss = await wg("ships/stats", {
-        account_id: accountId,
-        fields: "ship_id,last_battle_time," + shipModeFields,
-      });
-      ships = (ss[String(accountId)] || []);
+      // Chiedo i blocchi-modalità interi (non i singoli sottocampi): più robusto.
+      // Se anche questo fallisse, mostro comunque il profilo senza la tabella navi.
+      try {
+        const shipFields = "ship_id,last_battle_time," + MODES.map(m => m.key).join(",");
+        const ss = await wg("ships/stats", { account_id: accountId, fields: shipFields });
+        ships = (ss[String(accountId)] || []);
+      } catch (_) {
+        try {
+          // fallback minimo: solo Random, che è sempre valido
+          const ss = await wg("ships/stats", { account_id: accountId, fields: "ship_id,last_battle_time,pvp" });
+          ships = (ss[String(accountId)] || []);
+        } catch (_2) { ships = []; }
+      }
     }
     hide(els.status);
     renderProfile(player, clanTag, ships);
