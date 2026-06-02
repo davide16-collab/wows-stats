@@ -35,6 +35,13 @@ REALMS = {
     "na":   "https://api.worldofwarships.com",
     "asia": "https://api.worldofwarships.asia",
 }
+# Gli endpoint del namespace WGN (Wargaming Network, es. info clan) NON vivono
+# sul dominio worldofwarships ma sul dominio storico worldoftanks.
+REALMS_WGN = {
+    "eu":   "https://api.worldoftanks.eu",
+    "na":   "https://api.worldoftanks.com",
+    "asia": "https://api.worldoftanks.asia",
+}
 DEFAULT_REALM = os.environ.get("WG_REALM", "eu")
 
 # Valori attesi per il calcolo del Personal Rating (pubblicati da wows-numbers).
@@ -100,8 +107,13 @@ def build_wg_url(realm, endpoint, params):
     flat = {k: (v[0] if isinstance(v, list) else v) for k, v in params.items()}
     qs = urlencode(flat)
     endpoint = endpoint.strip("/")
-    namespace = "wgn" if endpoint in WGN_ENDPOINTS else "wows"
-    return f"{api_base(realm)}/{namespace}/{endpoint}/?{qs}"
+    if endpoint in WGN_ENDPOINTS:
+        base = REALMS_WGN.get(realm, REALMS_WGN[DEFAULT_REALM])
+        namespace = "wgn"
+    else:
+        base = api_base(realm)
+        namespace = "wows"
+    return f"{base}/{namespace}/{endpoint}/?{qs}"
 
 
 def get_ships_meta(realm):
