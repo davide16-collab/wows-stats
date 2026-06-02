@@ -258,7 +258,7 @@ function renderProfile(player, clanTag, ships) {
   </div>`;
 
   // barra dei tab modalità (solo se c'è più di una modalità)
-  if (_availModes.length > 1) {
+  if (_availModes.length >= 1) {
     html += `<div class="mode-tabs" id="modeTabs">
       ${_availModes.map((m, i) =>
         `<button data-mode="${m.key}" class="${i === 0 ? "on" : ""}">${m.label}</button>`).join("")}
