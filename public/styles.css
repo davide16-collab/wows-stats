@@ -46,7 +46,8 @@ a:hover{text-decoration:underline;}
 .brand-mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--blue),#42a5ff);box-shadow:var(--shadow-sm);}
 .brand-name{font-family:var(--sys);font-weight:600;font-size:20px;letter-spacing:-0.02em;color:var(--txt);}
 .search{display:flex;align-items:center;gap:8px;margin-left:auto;flex:1;max-width:520px;min-width:240px;}
-.search input{flex:1;background:var(--bg);border:1px solid var(--line-2);color:var(--txt);padding:9px 14px;font-size:15px;border-radius:980px;outline:none;font-family:var(--body);transition:border-color .15s, box-shadow .15s;}
+.search input{flex:1 1 auto;min-width:0;background:var(--bg);border:1px solid var(--line-2);color:var(--txt);padding:9px 14px;font-size:15px;border-radius:980px;outline:none;font-family:var(--body);transition:border-color .15s, box-shadow .15s;}
+.search #realmSelect,.search button,.search #searchBtn{flex:0 0 auto;}
 .search input::placeholder{color:var(--txt-faint);}
 .search input:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(0,113,227,.12);}
 #realmSelect,.lang-select{background:var(--bg);border:1px solid var(--line-2);color:var(--txt);padding:9px 10px;font-size:14px;border-radius:980px;outline:none;cursor:pointer;font-family:var(--body);}
