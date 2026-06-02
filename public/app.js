@@ -46,13 +46,11 @@ async function loadStatic() {
 }
 
 /* ---------- modalità di gioco ---------- */
-/* key = nome del campo nell'API; label = etichetta del tab.
-   Campi validi e documentati per WoWS: pvp (Random), pvp_solo, pvp_div2,
-   pvp_div3, rank_solo (Ranked), pve / pve_solo / pve_div2 / pve_div3 (Co-op). */
+/* key = nome del campo che usiamo internamente; label = etichetta del tab.
+   Random arriva da account/info; Ranked viene aggregato da seasons/accountinfo. */
 const MODES = [
   { key: "pvp", label: "Random" },
   { key: "rank_solo", label: "Ranked" },
-  { key: "pve", label: "Co-op" },
 ];
 
 /* ---------- scale colori ---------- */
@@ -181,6 +179,35 @@ async function loadPlayer(accountId, nick) {
     const player = info[String(accountId)];
     if (!player) throw new Error("Profilo non disponibile.");
 
+    // Ranked: l'endpoint seasons/accountinfo contiene le stagioni; sommiamo
+    // tutte le stagioni (solo rank_solo) in un unico totale e lo aggiungiamo
+    // a statistics come 'rank_solo', così i tab lo trovano automaticamente.
+    try {
+      if (!player.hidden_profile) {
+        const sea = await wg("seasons/accountinfo", { account_id: accountId });
+        const node = sea[String(accountId)];
+        const seasons = node && node.seasons;
+        if (seasons) {
+          const tot = { battles: 0, wins: 0, damage_dealt: 0, frags: 0, survived_battles: 0, xp: 0 };
+          for (const sid in seasons) {
+            const variants = seasons[sid];
+            for (const v in variants) {
+              const rs = variants[v] && variants[v].rank_solo;
+              if (rs && rs.battles) {
+                tot.battles += rs.battles; tot.wins += rs.wins;
+                tot.damage_dealt += rs.damage_dealt; tot.frags += rs.frags;
+                tot.survived_battles += rs.survived_battles; tot.xp += rs.xp;
+              }
+            }
+          }
+          if (tot.battles > 0) {
+            player.statistics = player.statistics || {};
+            player.statistics.rank_solo = tot;
+          }
+        }
+      }
+    } catch (_) { /* ranked opzionale */ }
+
     // clan
     let clanTag = null;
     try {
@@ -257,7 +284,7 @@ function renderProfile(player, clanTag, ships) {
     </div>
   </div>`;
 
-  // barra dei tab modalità (solo se c'è più di una modalità)
+  // barra dei tab modalità (sempre visibile, anche con una sola modalità)
   if (_availModes.length >= 1) {
     html += `<div class="mode-tabs" id="modeTabs">
       ${_availModes.map((m, i) =>
