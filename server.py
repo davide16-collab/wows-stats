@@ -201,6 +201,74 @@ def db_expected():
     return out
 
 
+def db_leaderboard_ship(ship_id, limit=100):
+    """Top giocatori indicizzati su una nave specifica.
+
+    Restituisce dati grezzi (battaglie, wins, damage, frags) + nickname.
+    Il PR esatto lo calcola il frontend (ha i valori attesi). Ordino per
+    danno medio come proxy, prendendo un po' piu' righe del necessario.
+    """
+    if not DATABASE_URL:
+        return []
+    with _db_lock:
+        if not db_init():
+            return []
+        rows = []
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT si.account_id, s.nickname,
+                               si.battles, si.wins, si.damage, si.frags
+                        FROM ship_index si
+                        LEFT JOIN snapshots s ON s.account_id = si.account_id
+                        WHERE si.ship_id = %s AND si.battles >= 50
+                        ORDER BY (si.damage / NULLIF(si.battles,0)) DESC
+                        LIMIT %s
+                    """, (ship_id, limit))
+                    for acc, nick, b, w, d, f in cur.fetchall():
+                        rows.append({"account_id": acc, "nickname": nick or str(acc),
+                                     "battles": int(b), "wins": int(w),
+                                     "damage": d, "frags": f})
+        except Exception as e:  # noqa
+            sys.stderr.write("db_leaderboard_ship fallita: %s\n" % e)
+        return rows
+
+
+def db_leaderboard_players(limit=100):
+    """Top giocatori indicizzati (globale), dai loro totali account.
+
+    Usa la tabella snapshots (totali Random dell'account). Il PR account lo
+    calcola il frontend aggregando le navi? No: per la classifica globale
+    usiamo i totali account e il frontend calcola un PR account-level
+    approssimato dai totali. Qui restituisco i dati grezzi ordinati per
+    danno medio account.
+    """
+    if not DATABASE_URL:
+        return []
+    with _db_lock:
+        if not db_init():
+            return []
+        rows = []
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT account_id, nickname, battles, wins, damage, frags
+                        FROM snapshots
+                        WHERE battles >= 100
+                        ORDER BY (damage / NULLIF(battles,0)) DESC
+                        LIMIT %s
+                    """, (limit,))
+                    for acc, nick, b, w, d, f in cur.fetchall():
+                        rows.append({"account_id": acc, "nickname": nick or str(acc),
+                                     "battles": int(b), "wins": int(w),
+                                     "damage": d, "frags": f})
+        except Exception as e:  # noqa
+            sys.stderr.write("db_leaderboard_players fallita: %s\n" % e)
+        return rows
+
+
 # ---------------------------------------------------------------------------
 # CONFIGURAZIONE
 # ---------------------------------------------------------------------------
@@ -434,6 +502,20 @@ class Handler(BaseHTTPRequestHandler):
                 res = db_progress(acc, nick, int(num("battles")), int(num("wins")),
                                   num("damage"), num("frags"))
                 self.send_json({"status": "ok", **res})
+                return
+
+            if path == "/api/leaderboard/ship":
+                try:
+                    sid = int(qs.get("ship_id", ["0"])[0])
+                except Exception:
+                    sid = 0
+                rows = db_leaderboard_ship(sid) if sid else []
+                self.send_json({"status": "ok", "enabled": bool(DATABASE_URL), "rows": rows})
+                return
+
+            if path == "/api/leaderboard/players":
+                rows = db_leaderboard_players()
+                self.send_json({"status": "ok", "enabled": bool(DATABASE_URL), "rows": rows})
                 return
 
             # file statici
