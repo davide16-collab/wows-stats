@@ -32,6 +32,11 @@
   .back:hover{color:var(--blue);}
   .role-tag{font-family:var(--mono);font-size:12px;color:var(--txt-dim);}
   .role-tag.role-cmd{color:var(--blue);font-weight:600;}
+  .cl-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:0 0 22px;}
+  .cl-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow-sm);}
+  .cl-k{font-family:var(--mono);font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--txt-faint);}
+  .cl-v{font-family:var(--sys);font-weight:600;font-size:24px;letter-spacing:-0.02em;margin-top:6px;color:var(--txt);}
+  .cl-v small{font-size:14px;color:var(--txt-faint);font-weight:500;margin-left:1px;}
 </style>
   <script src="theme.js"></script>
 </head>
@@ -152,9 +157,17 @@ function roleLabel(r){ return r?(ROLE_LABEL[r]||r.replace(/_/g," ")):"—"; }
 function roleRank(r){ return r in ROLE_ORDER?ROLE_ORDER[r]:9; }
 
 function renderRoster(c, rows){
+  const sum=clanSummary(rows);
   let html=`<span class="back" onclick="searchClans($('#clanSearch').value)">&larr; Back to results</span>
     <div class="cl-head"><span class="tag">[${c.tag}]</span><h1>${c.name||""}</h1></div>
     <p class="cl-sub">${rows.length} members · leader ${c.leader_name||"—"}</p>
+    <div class="cl-summary">
+      <div class="cl-card"><div class="cl-k">Avg. win rate</div><div class="cl-v" style="color:${wrColor(sum.wr)}">${fmt(sum.wr,1)}<small>%</small></div></div>
+      <div class="cl-card"><div class="cl-k">Avg. damage</div><div class="cl-v">${fmt(sum.dmg)}</div></div>
+      <div class="cl-card"><div class="cl-k">Avg. frags</div><div class="cl-v">${fmt(sum.frags,2)}</div></div>
+      <div class="cl-card"><div class="cl-k">Total battles</div><div class="cl-v">${fmt(sum.battles)}</div></div>
+      <div class="cl-card"><div class="cl-k">Active members</div><div class="cl-v">${sum.active}<small>/${rows.length}</small></div></div>
+    </div>
     <div class="table-wrap"><table><thead><tr>
       <th class="left">#</th><th class="left">Player</th><th class="left">Role</th><th>Battles</th>
       <th>WR%</th><th>Avg. damage</th><th>Avg. frags</th></tr></thead><tbody>`;
@@ -175,6 +188,25 @@ function renderRoster(c, rows){
   html+=`</tbody></table></div>
     <p class="idx-note"><span class="idx-dot" id="idxDot"></span><span id="idxText">Indexing members into rankings…</span></p>`;
   $("#clanResult").innerHTML=html;
+}
+
+/* riepilogo del clan calcolato dai totali account dei membri visibili.
+   Le medie sono pesate per battaglie (un membro con 9000 battaglie conta
+   piu' di uno con 200), come si fa per le statistiche aggregate. */
+function clanSummary(rows){
+  let B=0,W=0,D=0,F=0,active=0;
+  for(const r of rows){
+    if(!r.battles) continue;
+    active++;
+    B+=r.battles; W+=r.wins; D+=r.damage; F+=r.frags;
+  }
+  return {
+    wr: B?W/B*100:0,
+    dmg: B?D/B:0,
+    frags: B?F/B:0,
+    battles: B,
+    active,
+  };
 }
 
 /* carica le navi di ogni membro e le invia all'indice, a piccoli gruppi */
