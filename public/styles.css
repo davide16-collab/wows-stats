@@ -59,18 +59,28 @@ a:hover{text-decoration:underline;}
 
 /* header: altezza uniforme dei controlli + andata a capo su schermi stretti */
 .topbar{flex-wrap:wrap;row-gap:8px;}
-.topbar nav{flex-wrap:wrap;row-gap:8px;}
+.topbar nav,.topbar-nav{display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:8px;}
+.topbar-nav{margin-left:8px;}
 .topbar .compare-btn,
 .topbar #searchBtn,
 .topbar .search button,
 .topbar #realmSelect,
 .topbar .lang-select,
+.topbar-nav .compare-btn,
+.topbar-nav .lang-select,
 .topbar .theme-toggle{
   height:38px;line-height:1;box-sizing:border-box;
   display:inline-flex;align-items:center;justify-content:center;
 }
 .topbar .theme-toggle{width:38px;padding:0;}
 .topbar #realmSelect,.topbar .lang-select{padding:0 10px;}
+
+/* schermi stretti: la barra di ricerca occupa una riga intera, così i
+   pulsanti dell'header restano allineati insieme e non vanno a capo a uno a uno */
+@media (max-width:900px){
+  .topbar .search{order:10;flex:1 1 100%;max-width:none;margin-left:0;}
+  .topbar-nav{margin-left:auto;}
+}
 
 #main{max-width:1080px;margin:0 auto;padding:40px 28px 80px;}
 
