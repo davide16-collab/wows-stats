@@ -67,6 +67,7 @@
       <div class="lb-tabs">
         <button id="tabShip" class="on">By ship</button>
         <button id="tabPlayers">By player</button>
+        <button id="tabClans">By clan</button>
       </div>
 
       <!-- per nave -->
@@ -97,6 +98,18 @@
           <span id="findPlayerMsg" class="lb-findmsg"></span>
         </div>
         <div id="playersResult"></div>
+      </section>
+
+      <!-- per clan -->
+      <section id="paneClans" class="hidden">
+        <div class="lb-controls">
+          <select id="sortClans">
+            <option value="wr">Sort: Avg. win rate</option>
+            <option value="dmg">Sort: Avg. damage</option>
+          </select>
+        </div>
+        <p class="lb-note">Clans ranked by their members' weighted averages. A clan appears here once you open it on the Clans page.</p>
+        <div id="clansResult"></div>
       </section>
     </div>
   </main>
@@ -298,11 +311,45 @@ async function loadPlayers(page, hlAcc){
   fetchClanTags(rows.map(r=>r.account_id)).then(t=>applyClanTags("#playersResult",t));
 }
 
+let _clansPage=0;
+async function loadClans(page){
+  if(typeof page==="number") _clansPage=page; else _clansPage=0;
+  const box=$("#clansResult");
+  box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
+  const sort=$("#sortClans").value;
+  const res=await api(`/api/leaderboard/clans?offset=${_clansPage*PAGE}&limit=${PAGE}&sort=${sort}&realm=${REALM}`);
+  if(!res.enabled){ box.innerHTML=`<p class="lb-note">The ranking database is not active right now.</p>`; return; }
+  const total=res.total||0;
+  const rows=res.rows||[];
+  if(!rows.length){ box.innerHTML=`<p class="lb-note">No clans indexed yet. Open some clans on the Clans page and check back.</p>`; return; }
+  const base=_clansPage*PAGE;
+  let html=`<div class="table-wrap"><table><thead><tr>
+    <th class="left">#</th><th class="left">Clan</th><th>Members</th>
+    <th>Avg. WR%</th><th>Avg. damage</th><th>Avg. frags</th></tr></thead><tbody>`;
+  rows.forEach((c,i)=>{
+    const rk=base+i+1, cls=rk===1?"top1":rk===2?"top2":rk===3?"top3":"";
+    html+=`<tr>
+      <td class="left rank-col ${cls}">${rk}</td>
+      <td class="left"><span class="rk-clan" style="margin-left:0">[${c.tag}]</span> <span style="color:var(--txt-dim)">${c.name||""}</span></td>
+      <td>${c.active}/${c.members}</td>
+      <td style="color:${wrColor(c.avg_wr)};font-weight:600">${fmt(c.avg_wr,1)}</td>
+      <td>${fmt(c.avg_damage)}</td>
+      <td>${fmt(c.avg_frags,2)}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>`+pager("clans",_clansPage,total,"loadClans");
+  box.innerHTML=html;
+}
+
 /* tab */
-$("#tabShip").onclick=()=>{ $("#tabShip").classList.add("on"); $("#tabPlayers").classList.remove("on");
-  $("#paneShip").classList.remove("hidden"); $("#panePlayers").classList.add("hidden"); };
-$("#tabPlayers").onclick=()=>{ $("#tabPlayers").classList.add("on"); $("#tabShip").classList.remove("on");
-  $("#panePlayers").classList.remove("hidden"); $("#paneShip").classList.add("hidden"); loadPlayers(); };
+function setTab(which){
+  const tabs={ship:"#tabShip",players:"#tabPlayers",clans:"#tabClans"};
+  const panes={ship:"#paneShip",players:"#panePlayers",clans:"#paneClans"};
+  for(const k in tabs){ $(tabs[k]).classList.toggle("on",k===which); $(panes[k]).classList.toggle("hidden",k!==which); }
+}
+$("#tabShip").onclick=()=>setTab("ship");
+$("#tabPlayers").onclick=()=>{ setTab("players"); loadPlayers(); };
+$("#tabClans").onclick=()=>{ setTab("clans"); loadClans(); };
 
 /* ricerca posizione di un giocatore */
 async function findPlayerPos(){
@@ -341,6 +388,7 @@ $("#findPlayerBtn").addEventListener("click", findPlayerPos);
 $("#findPlayer").addEventListener("keydown", e=>{ if(e.key==="Enter") findPlayerPos(); });
 $("#findShipBtn").addEventListener("click", findShipPos);
 $("#findShip").addEventListener("keydown", e=>{ if(e.key==="Enter") findShipPos(); });
+$("#sortClans").addEventListener("change", ()=>loadClans(0));
 
 /* init */
 (async()=>{

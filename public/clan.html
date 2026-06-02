@@ -104,6 +104,7 @@ async function searchClans(name){
 }
 
 async function openClan(clanId){
+  window._openClanId=clanId;
   const box=$("#clanResult");
   box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
   try{
@@ -158,6 +159,13 @@ function roleRank(r){ return r in ROLE_ORDER?ROLE_ORDER[r]:9; }
 
 function renderRoster(c, rows){
   const sum=clanSummary(rows);
+  // salva il riepilogo per la classifica clan (silenzioso)
+  if(sum.active>0){
+    try{ fetch("/api/clan_summary",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({clan_id:c.clan_id||window._openClanId,tag:c.tag,name:c.name||"",
+        members:rows.length,active:sum.active,battles:sum.battles,
+        avg_wr:sum.wr,avg_damage:sum.dmg,avg_frags:sum.frags})}); }catch(_){}
+  }
   let html=`<span class="back" onclick="searchClans($('#clanSearch').value)">&larr; Back to results</span>
     <div class="cl-head"><span class="tag">[${c.tag}]</span><h1>${c.name||""}</h1></div>
     <p class="cl-sub">${rows.length} members · leader ${c.leader_name||"—"}</p>
