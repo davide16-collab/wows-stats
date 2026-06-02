@@ -387,12 +387,30 @@ async function loadPlayer(accountId, nick) {
 
     // clan
     let clanTag = null;
+    _clanColor = null;
     try {
       const ca = await wg("clans/accountinfo", { account_id: accountId, fields: "clan_id" });
       const cid = ca[String(accountId)] && ca[String(accountId)].clan_id;
       if (cid) {
         const ci = await wg("clans/info", { clan_id: cid, fields: "tag" });
         clanTag = ci[String(cid)] && ci[String(cid)].tag;
+        // colore della lega della stagione clan battles più recente
+        try {
+          const se = await wg("clans/season", { clan_id: cid });
+          const root = (se && se[String(cid)]) || se;
+          if (root && typeof root === "object") {
+            let best = null, bestTime = -1;
+            for (const sid in root) {
+              const s = root[sid];
+              const ft = s && (s.finish_time || s.start_time || 0);
+              const leagues = s && s.leagues;
+              if (leagues && leagues.length && ft > bestTime) {
+                bestTime = ft; best = leagues[0];
+              }
+            }
+            if (best && best.color) _clanColor = best.color;
+          }
+        } catch (_) { /* lega opzionale */ }
       }
     } catch (_) { /* clan opzionale */ }
 
@@ -443,6 +461,7 @@ async function loadPlayer(accountId, nick) {
 /* ---------- rendering profilo ---------- */
 let _ships = [], _sortKey = "battles", _sortDir = -1, _tierFilter = 0;
 let _player = null, _clanTag = null, _allShips = [], _activeMode = "pvp", _availModes = [];
+let _clanColor = null;
 
 function modeStats(obj, key) {
   return (obj && obj.statistics && obj.statistics[key]) || (obj && obj[key]) || null;
@@ -472,7 +491,7 @@ function renderProfile(player, clanTag, ships) {
       <div class="pr-rank">${overallPR != null ? prc.label : ""}</div>
     </div>` : ""}
     <div class="pinfo">
-      <div class="pnick">${player.nickname}${clanTag ? `<span class="clan-tag">[${clanTag}]</span>` : ""}</div>
+      <div class="pnick">${player.nickname}${clanTag ? `<span class="clan-tag"${_clanColor ? ` style="color:${_clanColor}"` : ""}>[${clanTag}]</span>` : ""}</div>
       <div class="pmeta">
         <span>${t("accountCreated")} <b>${dateFromTs(player.created_at)}</b></span>
         <span>${t("lastBattle")} <b>${dateFromTs(player.last_battle_time)}</b></span>
