@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Clans — Wows Stats</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  .cl-wrap{max-width:1000px;margin:0 auto;}
+  .cl-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:20px;}
+  .cl-controls input{
+    flex:1;min-width:240px;background:var(--card);border:1px solid var(--line-2);color:var(--txt);
+    padding:13px 16px;border-radius:980px;font-size:15px;outline:none;font-family:var(--body);box-shadow:var(--shadow-sm);}
+  .cl-controls input:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(0,113,227,.12);}
+  .cl-controls button{background:var(--blue);color:#fff;border:none;font-weight:500;font-size:15px;
+    padding:13px 28px;border-radius:980px;cursor:pointer;}
+  .cl-controls button:hover{background:var(--blue-dark);}
+  .cl-list{list-style:none;padding:0;margin:0 0 8px;display:flex;flex-direction:column;gap:8px;}
+  .cl-list li{display:flex;justify-content:space-between;align-items:center;background:var(--card);
+    border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;cursor:pointer;box-shadow:var(--shadow-sm);}
+  .cl-list li:hover{background:var(--card-2);}
+  .cl-tag{font-family:var(--mono);font-weight:600;color:var(--blue);}
+  .cl-meta{font-family:var(--mono);font-size:12px;color:var(--txt-faint);}
+  .cl-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:8px 0 4px;}
+  .cl-head h1{font-size:32px;font-weight:700;letter-spacing:-0.03em;margin:0;}
+  .cl-head .tag{font-family:var(--mono);font-weight:600;font-size:22px;color:var(--blue);}
+  .cl-sub{color:var(--txt-dim);font-size:14px;margin:0 0 18px;}
+  .idx-note{font-size:13px;color:var(--txt-faint);margin:14px 0 0;display:flex;align-items:center;gap:8px;}
+  .idx-dot{width:8px;height:8px;border-radius:50%;background:var(--blue);animation:pulse 1.2s infinite;}
+  @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+  .back{color:var(--txt-dim);font-size:14px;display:inline-block;margin-bottom:10px;cursor:pointer;}
+  .back:hover{color:var(--blue);}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" onclick="location.href='/'" title="Home" style="cursor:pointer">
+      <span class="brand-mark"></span><span class="brand-name">WOWS<span class="amber">STATS</span></span>
+    </div>
+    <nav style="display:flex;gap:6px;margin-left:auto;align-items:center">
+      <a href="/" class="compare-btn" style="text-decoration:none">SEARCH</a>
+      <a href="/leaderboards.html" class="compare-btn" style="text-decoration:none">RANKINGS</a>
+      <select id="realmSelect" class="lang-select" title="Server">
+        <option value="eu">EU</option><option value="na">NA</option><option value="asia">ASIA</option>
+      </select>
+    </nav>
+  </header>
+
+  <main id="main">
+    <div class="cl-wrap">
+      <h1 style="font-size:32px;font-weight:700;letter-spacing:-0.03em;margin:0 0 4px">Clans</h1>
+      <p class="cl-sub">Search a clan by name or tag. Opening a clan shows its roster and indexes its members into the rankings.</p>
+      <div class="cl-controls">
+        <input type="text" id="clanSearch" placeholder="Clan name or tag…" spellcheck="false" autocomplete="off" />
+        <button id="clanGo">Search</button>
+      </div>
+      <div id="clanResult"></div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span>Wows Stats &mdash; data via the Wargaming Public API.</span>
+    <span id="footMeta"></span>
+  </footer>
+
+<script>
+const $=(s)=>document.querySelector(s);
+let REALM="eu";
+const fmt=(n,d=0)=>(n==null||isNaN(n))?"—":Number(n).toLocaleString("en-GB",{minimumFractionDigits:d,maximumFractionDigits:d});
+const WR_SCALE=[[0,"#86868b"],[0.001,"#d11500"],[47,"#d97000"],[50,"#b8860b"],[52,"#3a9400"],[54,"#2e7d00"],[56,"#009b8a"],[60,"#b521d6"],[65,"#8a0ba8"]];
+function wrColor(wr){let c=WR_SCALE[0][1];for(const r of WR_SCALE)if(wr>=r[0])c=r[1];return c;}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+async function wg(endpoint,params){const q=new URLSearchParams({...params,realm:REALM});const r=await fetch(`/api/wg/${endpoint}?${q}`);return r.json();}
+
+$("#clanGo").onclick=()=>searchClans($("#clanSearch").value);
+$("#clanSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchClans(e.target.value);});
+$("#realmSelect").addEventListener("change",e=>{REALM=e.target.value;});
+
+async function searchClans(name){
+  name=(name||"").trim();
+  const box=$("#clanResult");
+  if(name.length<2){box.innerHTML=`<p class="cl-sub">Type at least 2 characters.</p>`;return;}
+  box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
+  try{
+    const res=await wg("clans/list",{search:name,limit:20});
+    const list=res.data||res||[];
+    if(!list.length){box.innerHTML=`<p class="cl-sub">No clan found for “${name}”.</p>`;return;}
+    let html=`<ul class="cl-list">`;
+    for(const c of list){
+      html+=`<li onclick="openClan(${c.clan_id})">
+        <span><span class="cl-tag">[${c.tag}]</span> &nbsp;${c.name||""}</span>
+        <span class="cl-meta">${c.members_count||0} members</span></li>`;
+    }
+    html+=`</ul>`;
+    box.innerHTML=html;
+  }catch(e){box.innerHTML=`<p class="cl-sub">Error: ${e.message}</p>`;}
+}
+
+async function openClan(clanId){
+  const box=$("#clanResult");
+  box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
+  try{
+    const ci=await wg("clans/info",{clan_id:clanId,fields:"tag,name,members_ids,members_count,leader_name"});
+    const c=ci[String(clanId)];
+    if(!c){box.innerHTML=`<p class="cl-sub">Clan not available.</p>`;return;}
+    const ids=(c.members_ids||[]).slice(0,100);
+    // stat account dei membri in blocco (veloce → roster immediato)
+    const info=await wg("account/info",{account_id:ids.join(","),fields:"account_id,nickname,hidden_profile,statistics.pvp.battles,statistics.pvp.wins,statistics.pvp.damage_dealt,statistics.pvp.frags"});
+    const rows=[];
+    for(const id of ids){
+      const p=info[String(id)];
+      if(!p)continue;
+      const s=p.statistics&&p.statistics.pvp;
+      rows.push({
+        account_id:id, nickname:p.nickname||String(id), hidden:!!p.hidden_profile,
+        battles:s?s.battles:0, wins:s?s.wins:0, damage:s?s.damage_dealt:0, frags:s?s.frags:0,
+      });
+    }
+    rows.sort((a,b)=>(b.battles?b.damage/b.battles:0)-(a.battles?a.damage/a.battles:0));
+    renderRoster(c, rows);
+    // indicizzazione navi in sottofondo (non blocca)
+    indexClanShips(rows.filter(r=>!r.hidden && r.battles>0));
+  }catch(e){box.innerHTML=`<p class="cl-sub">Error: ${e.message}</p>`;}
+}
+
+function renderRoster(c, rows){
+  let html=`<span class="back" onclick="searchClans($('#clanSearch').value)">&larr; Back to results</span>
+    <div class="cl-head"><span class="tag">[${c.tag}]</span><h1>${c.name||""}</h1></div>
+    <p class="cl-sub">${rows.length} members · leader ${c.leader_name||"—"}</p>
+    <div class="table-wrap"><table><thead><tr>
+      <th class="left">#</th><th class="left">Player</th><th>Battles</th>
+      <th>WR%</th><th>Avg. damage</th><th>Avg. frags</th></tr></thead><tbody>`;
+  rows.forEach((r,i)=>{
+    const wr=r.battles?r.wins/r.battles*100:0;
+    const avgD=r.battles?r.damage/r.battles:0;
+    const avgF=r.battles?r.frags/r.battles:0;
+    html+=`<tr>
+      <td class="left" style="color:var(--txt-faint);font-weight:700">${i+1}</td>
+      <td class="left"><a href="/?q=${encodeURIComponent(r.nickname)}" style="font-weight:600">${r.nickname}</a>${r.hidden?' <span class="cl-meta">hidden</span>':''}</td>
+      <td>${r.battles?fmt(r.battles):"—"}</td>
+      <td style="color:${wrColor(wr)};font-weight:600">${r.battles?fmt(wr,1):"—"}</td>
+      <td>${r.battles?fmt(avgD):"—"}</td>
+      <td>${r.battles?fmt(avgF,2):"—"}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>
+    <p class="idx-note"><span class="idx-dot" id="idxDot"></span><span id="idxText">Indexing members into rankings…</span></p>`;
+  $("#clanResult").innerHTML=html;
+}
+
+/* carica le navi di ogni membro e le invia all'indice, a piccoli gruppi */
+async function indexClanShips(members){
+  let done=0;
+  for(const m of members){
+    try{
+      const ss=await wg("ships/stats",{account_id:m.account_id,fields:"ship_id,pvp.battles,pvp.wins,pvp.damage_dealt,pvp.frags"});
+      const arr=ss[String(m.account_id)]||ss.data&&ss.data[String(m.account_id)]||[];
+      const payload=[];
+      for(const sh of arr){const p=sh.pvp;if(p&&p.battles)payload.push({ship_id:sh.ship_id,battles:p.battles,wins:p.wins,damage:p.damage_dealt,frags:p.frags});}
+      if(payload.length){
+        await fetch("/api/index",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({account_id:m.account_id,ships:payload})});
+      }
+      // salva anche lo snapshot account (per la classifica giocatori)
+      await fetch(`/api/progress?account_id=${m.account_id}&nickname=${encodeURIComponent(m.nickname)}&battles=${m.battles}&wins=${m.wins}&damage=${m.damage}&frags=${m.frags}`);
+    }catch(_){}
+    done++;
+    const txt=$("#idxText"); if(txt) txt.textContent=`Indexing members into rankings… ${done}/${members.length}`;
+    await sleep(250); // pausa per non superare i limiti API
+  }
+  const dot=$("#idxDot"); if(dot) dot.style.animation="none", dot.style.background="var(--teal)";
+  const txt=$("#idxText"); if(txt) txt.textContent=`Done — ${done} members indexed into the rankings.`;
+}
+
+(async()=>{
+  try{const cfg=await(await fetch("/api/config")).json();REALM=cfg.realm||"eu";$("#realmSelect").value=REALM;$("#footMeta").textContent=`realm ${REALM.toUpperCase()}`;}catch(_){}
+})();
+</script>
+</body>
+</html>
