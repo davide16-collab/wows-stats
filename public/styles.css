@@ -142,6 +142,7 @@ body{
   content:"";position:absolute;right:-40px;top:-60px;width:240px;height:240px;
   background:radial-gradient(circle,rgba(246,166,35,.10),transparent 70%);
 }
+.pcard.no-pr{gap:0;}
 .pr-badge{
   flex:none;width:118px;height:118px;border-radius:14px;display:flex;
   flex-direction:column;align-items:center;justify-content:center;
@@ -221,6 +222,15 @@ tbody tr:hover{background:var(--panel);}
   margin-top:18px;padding:30px;text-align:center;color:var(--txt-faint);
   background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--radius);
 }
+
+.lang-select{
+  background:var(--panel);border:1px solid var(--line);color:var(--txt-dim);
+  padding:10px 8px;font-family:var(--cond);font-weight:600;letter-spacing:.5px;
+  border-radius:var(--radius);outline:none;cursor:pointer;margin-left:10px;
+}
+.lang-select:focus{border-color:var(--amber);}
+.foot a{color:var(--amber);text-decoration:none;}
+.foot a:hover{text-decoration:underline;}
 
 .foot{
   border-top:1px solid var(--line-soft);padding:18px 32px;margin-top:auto;
