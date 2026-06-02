@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wows Stats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=Saira:wght@400;500;600&family=Spline+Sans+Mono:wght@500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand" id="homeBtn" title="Home">
+      <span class="brand-mark"></span>
+      <span class="brand-name">WOWS<span class="amber">STATS</span></span>
+    </div>
+    <form class="search" id="searchForm" autocomplete="off">
+      <input type="text" id="searchInput" placeholder="Cerca un giocatore&hellip;" spellcheck="false" />
+      <select id="realmSelect" title="Server">
+        <option value="eu">EU</option>
+        <option value="na">NA</option>
+        <option value="asia">ASIA</option>
+      </select>
+      <button type="submit" id="searchBtn">CERCA</button>
+    </form>
+  </header>
+
+  <main id="main">
+    <!-- HERO -->
+    <section class="hero" id="hero">
+      <h1>Statistiche <span class="amber">World&nbsp;of&nbsp;Warships</span></h1>
+      <p class="hero-sub">Cerca un comandante per nickname e analizza il suo rating, le percentuali di vittoria e ogni singola nave.</p>
+      <form class="hero-search" id="heroForm" autocomplete="off">
+        <input type="text" id="heroInput" placeholder="es. PotatoSquad" spellcheck="false" />
+        <button type="submit">CERCA</button>
+      </form>
+      <div class="hero-foot" id="heroFoot"></div>
+    </section>
+
+    <!-- RISULTATI MULTIPLI -->
+    <section class="results hidden" id="results">
+      <h2>Risultati</h2>
+      <ul id="resultsList"></ul>
+    </section>
+
+    <!-- PROFILO GIOCATORE -->
+    <section class="profile hidden" id="profile"></section>
+
+    <!-- STATO -->
+    <div class="status hidden" id="status"></div>
+  </main>
+
+  <footer class="foot">
+    <span>Wows Stats &mdash; dati via Wargaming Public API.</span>
+    <span id="footMeta"></span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
