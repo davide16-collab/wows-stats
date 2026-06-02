@@ -29,6 +29,16 @@
   .lb-pager button:hover:not(:disabled){border-color:var(--blue);color:var(--blue);}
   .lb-pager button:disabled{opacity:.4;cursor:not-allowed;}
   .lb-pageinfo{font-family:var(--mono);font-size:13px;color:var(--txt-faint);}
+  .rk-clan{font-family:var(--mono);font-size:12px;color:var(--blue);margin-left:6px;font-weight:600;}
+  tr.rk-hl td{background:rgba(10,132,255,.14);}
+  .lb-find{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 16px;}
+  .lb-find input{background:var(--card);border:1px solid var(--line-2);color:var(--txt);
+    padding:10px 14px;border-radius:980px;font-size:14px;outline:none;font-family:var(--body);min-width:280px;box-shadow:var(--shadow-sm);}
+  .lb-find input:focus{border-color:var(--blue);}
+  .lb-find button{background:var(--blue);color:#fff;border:none;font-weight:500;font-size:14px;
+    padding:10px 22px;border-radius:980px;cursor:pointer;}
+  .lb-find button:hover{background:var(--blue-dark);}
+  .lb-findmsg{font-size:13px;color:var(--txt-dim);}
 </style>
   <script src="theme.js"></script>
 </head>
@@ -70,12 +80,22 @@
             <option value="wr">Sort: Win rate</option>
           </select>
         </div>
+        <div class="lb-find">
+          <input type="text" id="findShip" placeholder="Find a player's position on this ship…" spellcheck="false" autocomplete="off" />
+          <button id="findShipBtn">Find</button>
+          <span id="findShipMsg" class="lb-findmsg"></span>
+        </div>
         <div id="shipResult"></div>
       </section>
 
       <!-- per giocatore -->
       <section id="panePlayers" class="hidden">
         <p class="lb-note">Top indexed players by average damage. Click a name to open the full profile.</p>
+        <div class="lb-find">
+          <input type="text" id="findPlayer" placeholder="Find a player's position…" spellcheck="false" autocomplete="off" />
+          <button id="findPlayerBtn">Find</button>
+          <span id="findPlayerMsg" class="lb-findmsg"></span>
+        </div>
         <div id="playersResult"></div>
       </section>
     </div>
@@ -131,6 +151,46 @@ function shipPRfromRow(r, shipId){
 
 async function api(path){ const r=await fetch(path); return r.json(); }
 
+/* Recupera i tag clan per un gruppo di account_id (al volo).
+   Ritorna una mappa {account_id: "TAG"}. Due chiamate: accountinfo→clan_id,
+   poi clans/info→tag. Silenziosa: se fallisce, nessun tag. */
+async function fetchClanTags(accountIds){
+  const out={};
+  if(!accountIds.length) return out;
+  try{
+    const ca=await api(`/api/wg/clans/accountinfo?account_id=${accountIds.join(",")}&fields=clan_id&realm=${REALM}`);
+    const data=ca.data||ca||{};
+    const byClan={}; // clan_id -> [account_id...]
+    for(const id of accountIds){
+      const cid=data[String(id)]&&data[String(id)].clan_id;
+      if(cid){ (byClan[cid]=byClan[cid]||[]).push(id); }
+    }
+    const clanIds=Object.keys(byClan);
+    if(!clanIds.length) return out;
+    const ci=await api(`/api/wg/clans/info?clan_id=${clanIds.join(",")}&fields=tag&realm=${REALM}`);
+    const cdata=ci.data||ci||{};
+    for(const cid of clanIds){
+      const tag=cdata[String(cid)]&&cdata[String(cid)].tag;
+      if(tag){ for(const id of byClan[cid]) out[String(id)]=tag; }
+    }
+  }catch(_){}
+  return out;
+}
+
+/* Inserisce i tag clan accanto ai nomi già renderizzati nella tabella */
+function applyClanTags(containerSel, tags){
+  const box=document.querySelector(containerSel);
+  if(!box) return;
+  box.querySelectorAll("a[data-acc]").forEach(a=>{
+    const tag=tags[a.getAttribute("data-acc")];
+    if(tag && !a.querySelector(".rk-clan")){
+      const span=document.createElement("span");
+      span.className="rk-clan"; span.textContent=`[${tag}]`;
+      a.appendChild(span);
+    }
+  });
+}
+
 async function loadMeta(){
   try{ const m=await api(`/api/ships_meta?realm=${REALM}`); SHIPS_META=m.data||{}; }catch(_){}
   try{ const e=await api(`/api/expected?realm=${REALM}`); EXPECTED=e.data||{}; }catch(_){}
@@ -151,7 +211,7 @@ function buildShipSelect(filter){
 }
 
 const PAGE=50;
-let _shipPage=0, _shipId=null, _playersPage=0;
+let _shipPage=0, _shipId=null, _playersPage=0, _shipHl=null;
 
 function pager(id, page, total, fnName){
   const pages=Math.max(1, Math.ceil(total/PAGE));
@@ -164,8 +224,9 @@ function pager(id, page, total, fnName){
   </div>`;
 }
 
-async function loadShip(page){
+async function loadShip(page, hlAcc){
   if(typeof page==="number") _shipPage=page; else _shipPage=0;
+  _shipHl=hlAcc||null;
   const box=$("#shipResult");
   box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
   const res=await api(`/api/leaderboard/ship?ship_id=${_shipId}&offset=${_shipPage*PAGE}&limit=${PAGE}&realm=${REALM}`);
@@ -182,6 +243,7 @@ function renderShip(rows, total){
   const base=_shipPage*PAGE; // offset per il numero di rank globale
   // calcolo i rank globali PRIMA di un eventuale riordino locale
   rows.forEach((r,i)=>r._rank=base+i+1);
+  rows.forEach(r=>r._hl=_shipHl&&String(r.account_id)===String(_shipHl));
   if(sort!=="dmg"){
     rows=[...rows].sort((a,b)=> sort==="wr" ? b.wr-a.wr : (b.pr||0)-(a.pr||0));
   }
@@ -190,9 +252,9 @@ function renderShip(rows, total){
     <th>WR%</th><th>Avg. damage</th><th>PR</th></tr></thead><tbody>`;
   rows.forEach((r)=>{
     const rk=r._rank, cls=rk===1?"top1":rk===2?"top2":rk===3?"top3":"";
-    html+=`<tr>
+    html+=`<tr${r._hl?' class="rk-hl"':''}>
       <td class="left rank-col ${cls}">${rk}</td>
-      <td class="left"><a href="/?q=${encodeURIComponent(r.nickname)}" style="font-weight:600">${r.nickname}</a></td>
+      <td class="left"><a data-acc="${r.account_id}" href="/?q=${encodeURIComponent(r.nickname)}" style="font-weight:600">${r.nickname}</a></td>
       <td>${fmt(r.battles)}</td>
       <td style="color:${wrColor(r.wr)};font-weight:600">${fmt(r.wr,1)}</td>
       <td>${fmt(r.avgDmg)}</td>
@@ -203,16 +265,17 @@ function renderShip(rows, total){
   $("#shipResult").innerHTML=html;
   $("#shipResult")._rows=rows;
   $("#shipResult")._total=total;
+  fetchClanTags(rows.map(r=>r.account_id)).then(t=>applyClanTags("#shipResult",t));
 }
 
-async function loadPlayers(page){
+async function loadPlayers(page, hlAcc){
   if(typeof page==="number") _playersPage=page; else _playersPage=0;
   const box=$("#playersResult");
   box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
   const res=await api(`/api/leaderboard/players?offset=${_playersPage*PAGE}&limit=${PAGE}&realm=${REALM}`);
   if(!res.enabled){ box.innerHTML=`<p class="lb-note">The ranking database is not active right now.</p>`; return; }
   const total=res.total||0;
-  let rows=(res.rows||[]).map(r=>({...r, wr:r.battles?r.wins/r.battles*100:0, avgDmg:r.battles?r.damage/r.battles:0}));
+  let rows=(res.rows||[]).map(r=>({...r, wr:r.battles?r.wins/r.battles*100:0, avgDmg:r.battles?r.damage/r.battles:0, _hl:hlAcc&&String(r.account_id)===String(hlAcc)}));
   if(!rows.length){ box.innerHTML=`<p class="lb-note">No indexed players yet. Search some players and check back.</p>`; return; }
   const base=_playersPage*PAGE;
   let html=`<div class="table-wrap"><table><thead><tr>
@@ -221,9 +284,9 @@ async function loadPlayers(page){
   rows.forEach((r,i)=>{
     const rk=base+i+1, cls=rk===1?"top1":rk===2?"top2":rk===3?"top3":"";
     const avgF=r.battles?r.frags/r.battles:0;
-    html+=`<tr>
+    html+=`<tr${r._hl?' class="rk-hl"':''}>
       <td class="left rank-col ${cls}">${rk}</td>
-      <td class="left"><a href="/?q=${encodeURIComponent(r.nickname)}" style="font-weight:600">${r.nickname}</a></td>
+      <td class="left"><a data-acc="${r.account_id}" href="/?q=${encodeURIComponent(r.nickname)}" style="font-weight:600">${r.nickname}</a></td>
       <td>${fmt(r.battles)}</td>
       <td style="color:${wrColor(r.wr)};font-weight:600">${fmt(r.wr,1)}</td>
       <td>${fmt(r.avgDmg)}</td>
@@ -232,6 +295,7 @@ async function loadPlayers(page){
   });
   html+=`</tbody></table></div>`+pager("players",_playersPage,total,"loadPlayers");
   box.innerHTML=html;
+  fetchClanTags(rows.map(r=>r.account_id)).then(t=>applyClanTags("#playersResult",t));
 }
 
 /* tab */
@@ -240,11 +304,43 @@ $("#tabShip").onclick=()=>{ $("#tabShip").classList.add("on"); $("#tabPlayers").
 $("#tabPlayers").onclick=()=>{ $("#tabPlayers").classList.add("on"); $("#tabShip").classList.remove("on");
   $("#panePlayers").classList.remove("hidden"); $("#paneShip").classList.add("hidden"); loadPlayers(); };
 
-/* eventi */
+/* ricerca posizione di un giocatore */
+async function findPlayerPos(){
+  const nick=$("#findPlayer").value.trim();
+  const msg=$("#findPlayerMsg");
+  if(nick.length<2){ msg.textContent="Type a nickname."; return; }
+  msg.textContent="Searching…";
+  const res=await api(`/api/leaderboard/rank_player?nickname=${encodeURIComponent(nick)}&realm=${REALM}`);
+  if(!res.found){ msg.textContent=`“${nick}” is not in the ranking yet (need ≥100 battles and to be indexed).`; return; }
+  msg.innerHTML=`<b>${res.nickname}</b> — #${res.rank} of ${res.total}`;
+  const page=Math.floor((res.rank-1)/PAGE);
+  await loadPlayers(page, res.account_id);
+  scrollToHl("#playersResult");
+}
+async function findShipPos(){
+  const nick=$("#findShip").value.trim();
+  const msg=$("#findShipMsg");
+  if(!_shipId){ msg.textContent="Pick a ship first."; return; }
+  if(nick.length<2){ msg.textContent="Type a nickname."; return; }
+  msg.textContent="Searching…";
+  const res=await api(`/api/leaderboard/rank_ship?ship_id=${_shipId}&nickname=${encodeURIComponent(nick)}&realm=${REALM}`);
+  if(!res.found){ msg.textContent=`“${nick}” has no indexed stats on this ship (need ≥50 battles).`; return; }
+  msg.innerHTML=`#${res.rank} of ${res.total} on this ship`;
+  const page=Math.floor((res.rank-1)/PAGE);
+  await loadShip(page, res.account_id);
+  scrollToHl("#shipResult");
+}
+function scrollToHl(sel){
+  setTimeout(()=>{ const row=document.querySelector(`${sel} tr.rk-hl`); if(row) row.scrollIntoView({behavior:"smooth",block:"center"}); }, 150);
+}
 $("#shipSearch").addEventListener("input", e=>buildShipSelect(e.target.value));
 $("#shipSelect").addEventListener("change", e=>{ _shipId=e.target.value; loadShip(0); });
 $("#sortShip").addEventListener("change", ()=>{ const r=$("#shipResult")._rows, t=$("#shipResult")._total; if(r) renderShip(r,t); });
 $("#realmSelect").addEventListener("change", e=>{ REALM=e.target.value; loadMeta(); });
+$("#findPlayerBtn").addEventListener("click", findPlayerPos);
+$("#findPlayer").addEventListener("keydown", e=>{ if(e.key==="Enter") findPlayerPos(); });
+$("#findShipBtn").addEventListener("click", findShipPos);
+$("#findShip").addEventListener("keydown", e=>{ if(e.key==="Enter") findShipPos(); });
 
 /* init */
 (async()=>{
