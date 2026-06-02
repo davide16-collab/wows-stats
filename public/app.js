@@ -2,7 +2,7 @@
 
 /* Mostra/nasconde il Personal Rating (badge profilo + colonna navi).
    Metti true per riattivarlo: il codice di calcolo resta tutto qui sotto. */
-const SHOW_PR = false;
+const SHOW_PR = true;
 
 /* ---------- multilingua ---------- */
 /* Termini di gioco affermati (Win rate, Personal Rating, Random/Ranked/Co-op)
@@ -262,13 +262,48 @@ function wrColor(wr) {
 }
 
 /* ---------- Personal Rating ---------- */
+/* Valori attesi "di riserva" per tier+classe, usati quando una nave non ha
+   ancora medie dal database. Stime ragionevoli del danno medio per tier e
+   tipo (crescono col tier; BB/CA più alti, DD/CV variabili). WR atteso 50%,
+   frag attesi ~ scala col tier. Servono solo da rete di sicurezza: appena il
+   database raccoglie abbastanza dati su una nave, quelli hanno la precedenza. */
+const FALLBACK_DMG = {
+  // tier:        1     2     3     4     5     6     7     8     9     10    11
+  Battleship:  [0,8000,12000,18000,26000,34000,44000,55000,68000,82000,95000,100000],
+  Cruiser:     [0,6000,10000,15000,22000,30000,38000,47000,58000,70000,82000,88000],
+  Destroyer:   [0,5000, 8000,12000,17000,23000,30000,38000,47000,57000,66000,70000],
+  AirCarrier:  [0,8000,12000,20000,30000,40000,52000,64000,78000,92000,105000,110000],
+  Submarine:   [0,5000, 8000,12000,18000,24000,32000,40000,50000,60000,70000,75000],
+};
+const FALLBACK_FRAGS = {
+  Battleship:0.85, Cruiser:0.95, Destroyer:0.80, AirCarrier:1.10, Submarine:0.80,
+};
+function expectedFor(shipId) {
+  // 1) medie reali (database o file)
+  const exp = _expected[String(shipId)];
+  if (exp && exp.average_damage_dealt) return exp;
+  // 2) fallback per tier + classe dai metadati nave
+  const meta = (_shipsMeta && _shipsMeta[String(shipId)]) || null;
+  if (!meta || !meta.tier || !meta.type) return null;
+  const row = FALLBACK_DMG[meta.type];
+  if (!row) return null;
+  const dmg = row[meta.tier] || row[row.length - 1];
+  if (!dmg) return null;
+  return {
+    average_damage_dealt: dmg,
+    average_frags: FALLBACK_FRAGS[meta.type] || 0.85,
+    win_rate: 50.0,
+    _fallback: true,
+  };
+}
+
 /* Formula standard (Wahzehd / wows-numbers).                              */
 function computePR(shipStats) {
   let aDmg = 0, aFrags = 0, aWins = 0;       // valori reali (somme)
   let eDmg = 0, eFrags = 0, eWins = 0;       // valori attesi (pesati per battaglie)
   for (const s of shipStats) {
     const pvp = s.pvp; if (!pvp || !pvp.battles) continue;
-    const exp = _expected[String(s.ship_id)];
+    const exp = expectedFor(s.ship_id);
     if (!exp || !exp.average_damage_dealt) continue;
     const b = pvp.battles;
     aDmg += pvp.damage_dealt;
@@ -288,7 +323,7 @@ function computePR(shipStats) {
 /* PR di una singola nave */
 function shipPR(s) {
   const pvp = s.pvp; if (!pvp || !pvp.battles) return null;
-  const exp = _expected[String(s.ship_id)];
+  const exp = expectedFor(s.ship_id);
   if (!exp || !exp.average_damage_dealt) return null;
   const rDmg = (pvp.damage_dealt / pvp.battles) / exp.average_damage_dealt;
   const rFrags = (pvp.frags / pvp.battles) / exp.average_frags;
@@ -527,6 +562,7 @@ function renderProfile(player, clanTag, ships) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 
   loadProgress(player);  // "progresso dall'ultima visita" (se DB attivo)
+  indexShips(player, ships);  // indicizza le navi per migliorare le medie PR
 }
 
 /* Progresso dall'ultima visita: invia i totali correnti al server, che
@@ -569,6 +605,30 @@ async function loadProgress(player) {
         </div>
       </div>`;
   } catch (_) { /* progresso opzionale */ }
+}
+
+/* Indicizza le navi del giocatore: le invia al server, che le accumula nel
+   database per calcolare le medie attese. Migliora il PR di tutti col tempo. */
+async function indexShips(player, ships) {
+  if (!player || player.hidden_profile || !ships || !ships.length) return;
+  const payload = [];
+  for (const s of ships) {
+    const pvp = s.pvp;
+    if (pvp && pvp.battles) {
+      payload.push({
+        ship_id: s.ship_id, battles: pvp.battles, wins: pvp.wins,
+        damage: pvp.damage_dealt, frags: pvp.frags,
+      });
+    }
+  }
+  if (!payload.length) return;
+  try {
+    await fetch("/api/index", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account_id: player.account_id, ships: payload }),
+    });
+  } catch (_) { /* indicizzazione opzionale, silenziosa */ }
 }
 
 function bindModeTabs() {
