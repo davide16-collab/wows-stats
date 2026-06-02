@@ -1,0 +1,2 @@
+# Wows Stats non usa librerie esterne: solo la libreria standard di Python.
+# Questo file serve solo a far capire a Render che è un progetto Python.

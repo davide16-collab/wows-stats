@@ -1,0 +1,16 @@
+# Configurazione per il deploy su Render.
+# Quando colleghi il repository, Render legge questo file e imposta tutto da solo.
+services:
+  - type: web
+    name: wows-stats
+    runtime: python
+    plan: free
+    buildCommand: ""          # niente da compilare: usa solo la libreria standard
+    startCommand: python3 server.py
+    envVars:
+      - key: HOST
+        value: 0.0.0.0        # indispensabile online: ascolta su tutte le interfacce
+      - key: WG_APP_ID
+        value: 62317bb080e94322b11585d4c2bf3a6c
+      - key: WG_REALM
+        value: eu
