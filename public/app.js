@@ -706,6 +706,7 @@ function enrichShip(s, key = "pvp") {
     type: prettyType(meta.type),
     nation: meta.nation || "",
     premium: !!meta.is_premium || !!meta.is_special,
+    img: meta.images ? (meta.images.small || meta.images.contour || "") : "",
     battles: ms.battles,
     wr: ms.wins / ms.battles * 100,
     dmg: ms.damage_dealt / ms.battles,
@@ -747,7 +748,7 @@ function drawShips() {
   body.innerHTML = rows.map(s => {
     const prc = prColor(s.pr || 0);
     return `<tr>
-      <td class="left"><span class="ship-name ${s.premium ? "prem" : ""}">${s.name}</span>
+      <td class="left">${s.img ? `<img class="ship-ic" src="${s.img}" alt="" loading="lazy">` : ""}<span class="ship-name ${s.premium ? "prem" : ""}">${s.name}</span>
         ${s.nation ? `<span class="ship-sub">${s.nation}</span>` : ""}</td>
       <td><span class="tier-tag">${roman(s.tier)}</span></td>
       <td class="left"><span class="type-tag">${(t("types")[s.type]) || s.type || "—"}</span></td>

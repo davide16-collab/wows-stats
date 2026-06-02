@@ -144,6 +144,7 @@ tbody tr:last-child td{border-bottom:none;}
 tbody tr:hover{background:var(--card-2);}
 .ship-name{font-weight:600;color:var(--txt);}
 .ship-name.prem{color:#b25000;}
+.ship-ic{height:22px;width:auto;max-width:48px;object-fit:contain;vertical-align:middle;margin-right:9px;border-radius:3px;}
 .ship-sub{font-family:var(--mono);font-size:11px;color:var(--txt-faint);margin-left:6px;}
 .tier-tag{font-family:var(--mono);font-weight:600;color:var(--txt-dim);}
 .type-tag{color:var(--txt-dim);font-size:14px;}
