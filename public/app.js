@@ -227,18 +227,18 @@ const MODES = [
   { key: "rank_solo", label: "Ranked" },
 ];
 
-/* ---------- scale colori ---------- */
+/* ---------- scale colori (adattate per fondo chiaro) ---------- */
 /* terzo valore = indice nell'array prLabels (tradotto per lingua) */
 const PR_SCALE = [
-  [0, "#a0a0a0", 0],
-  [1, "#fe0e00", 1],
-  [750, "#fe7903", 2],
-  [1100, "#ffc71f", 3],
-  [1350, "#44b300", 4],
-  [1550, "#318000", 5],
-  [1750, "#02c9b3", 6],
-  [2100, "#d042f3", 7],
-  [2450, "#a00dc5", 8],
+  [0, "#86868b", 0],
+  [1, "#d11500", 1],
+  [750, "#d97000", 2],
+  [1100, "#b8860b", 3],
+  [1350, "#3a9400", 4],
+  [1550, "#2e7d00", 5],
+  [1750, "#009b8a", 6],
+  [2100, "#b521d6", 7],
+  [2450, "#8a0ba8", 8],
 ];
 function prColor(pr) {
   let c = PR_SCALE[0];
@@ -247,8 +247,8 @@ function prColor(pr) {
   return { color: c[1], label: labels[c[2]] || "" };
 }
 const WR_SCALE = [
-  [0, "#a0a0a0"], [0.001, "#fe0e00"], [47, "#fe7903"], [50, "#ffc71f"],
-  [52, "#44b300"], [54, "#318000"], [56, "#02c9b3"], [60, "#d042f3"], [65, "#a00dc5"],
+  [0, "#86868b"], [0.001, "#d11500"], [47, "#d97000"], [50, "#b8860b"],
+  [52, "#3a9400"], [54, "#2e7d00"], [56, "#009b8a"], [60, "#b521d6"], [65, "#8a0ba8"],
 ];
 function wrColor(wr) {
   let c = WR_SCALE[0][1];
