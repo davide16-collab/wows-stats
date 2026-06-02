@@ -714,6 +714,29 @@ function enrichShip(s, key = "pvp") {
     pr,
   };
 }
+const CLASS_SVG = {
+  Battleship: '<path d="M2 14h20l-2 4H4z"/><rect x="9" y="6" width="6" height="8"/><rect x="5" y="10" width="3" height="4"/><rect x="16" y="10" width="3" height="4"/><rect x="11.4" y="3" width="1.2" height="3"/>',
+  Cruiser:    '<path d="M3 14h18l-2 4H5z"/><rect x="9.5" y="8" width="5" height="6"/><rect x="6" y="11" width="2.5" height="3"/><rect x="11.6" y="5" width="0.8" height="3"/>',
+  Destroyer:  '<path d="M3 15h18l-2 3H5z"/><rect x="10" y="11" width="4" height="4"/><rect x="11.6" y="7" width="0.8" height="4"/>',
+  AirCarrier: '<path d="M2 15h20l-1.5 3H3.5z"/><rect x="3" y="11.5" width="18" height="2"/><rect x="15.5" y="8.5" width="2" height="3"/><path d="M6.5 9.7l3.2-.7 3.2.7-3.2.7z"/>',
+  Submarine:  '<ellipse cx="12" cy="14" rx="10" ry="3.3"/><rect x="10.3" y="9" width="3.4" height="5"/><rect x="11.6" y="5.5" width="0.8" height="3.5"/>',
+};
+function classIcon(type) {
+  const p = CLASS_SVG[type]; if (!p) return "";
+  return `<svg class="cls-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${p}</svg>`;
+}
+const NATION = {
+  usa:{l:"USA",c:"#2a6df0"}, japan:{l:"JPN",c:"#d11500"}, ussr:{l:"USSR",c:"#c0392b"},
+  germany:{l:"GER",c:"#8a8a8e"}, uk:{l:"UK",c:"#1f3a93"}, france:{l:"FRA",c:"#2a6df0"},
+  italy:{l:"ITA",c:"#1a8917"}, pan_asia:{l:"ASIA",c:"#009b8a"}, commonwealth:{l:"CMW",c:"#b8860b"},
+  pan_america:{l:"AMER",c:"#d97000"}, europe:{l:"EUR",c:"#3a5fcd"}, netherlands:{l:"NED",c:"#e67e22"},
+  spain:{l:"ESP",c:"#c79a00"},
+};
+function nationTag(n) {
+  if (!n) return "";
+  const x = NATION[String(n).toLowerCase()] || { l: String(n).toUpperCase().slice(0, 4), c: "#86868b" };
+  return `<span class="nation-tag" style="--nc:${x.c}">${x.l}</span>`;
+}
 function prettyType(x) { return x || ""; }
 function roman(n) { return ["—", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "★"][n] || n; }
 
@@ -749,9 +772,9 @@ function drawShips() {
     const prc = prColor(s.pr || 0);
     return `<tr>
       <td class="left">${s.img ? `<img class="ship-ic" src="${s.img}" alt="" loading="lazy">` : ""}<span class="ship-name ${s.premium ? "prem" : ""}">${s.name}</span>
-        ${s.nation ? `<span class="ship-sub">${s.nation}</span>` : ""}</td>
+        ${nationTag(s.nation)}</td>
       <td><span class="tier-tag">${roman(s.tier)}</span></td>
-      <td class="left"><span class="type-tag">${(t("types")[s.type]) || s.type || "—"}</span></td>
+      <td class="left"><span class="type-tag">${classIcon(s.type)}${(t("types")[s.type]) || s.type || "—"}</span></td>
       <td>${fmt(s.battles)}</td>
       <td class="wr-cell" style="color:${wrColor(s.wr)}">${fmt(s.wr, 1)}</td>
       <td>${fmt(s.dmg)}</td>
