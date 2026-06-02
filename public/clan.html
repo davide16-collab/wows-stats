@@ -30,6 +30,8 @@
   @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
   .back{color:var(--txt-dim);font-size:14px;display:inline-block;margin-bottom:10px;cursor:pointer;}
   .back:hover{color:var(--blue);}
+  .role-tag{font-family:var(--mono);font-size:12px;color:var(--txt-dim);}
+  .role-tag.role-cmd{color:var(--blue);font-weight:600;}
 </style>
   <script src="theme.js"></script>
 </head>
@@ -100,9 +102,16 @@ async function openClan(clanId){
   const box=$("#clanResult");
   box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
   try{
-    const ci=await wg("clans/info",{clan_id:clanId,fields:"tag,name,members_ids,members_count,leader_name"});
+    const ci=await wg("clans/info",{clan_id:clanId,fields:"tag,name,members_ids,members_count,leader_name,members.role,members.account_id",extra:"members"});
     const c=ci[String(clanId)];
     if(!c){box.innerHTML=`<p class="cl-sub">Clan not available.</p>`;return;}
+    // mappa account_id -> ruolo (dal dettaglio members)
+    const roleById={};
+    const mem=c.members;
+    if(mem){
+      const list=Array.isArray(mem)?mem:Object.values(mem);
+      for(const m of list){ if(m&&m.account_id!=null) roleById[String(m.account_id)]=m.role; }
+    }
     const ids=(c.members_ids||[]).slice(0,100);
     // stat account dei membri in blocco (veloce → roster immediato)
     const info=await wg("account/info",{account_id:ids.join(","),fields:"account_id,nickname,hidden_profile,statistics.pvp.battles,statistics.pvp.wins,statistics.pvp.damage_dealt,statistics.pvp.frags"});
@@ -113,22 +122,41 @@ async function openClan(clanId){
       const s=p.statistics&&p.statistics.pvp;
       rows.push({
         account_id:id, nickname:p.nickname||String(id), hidden:!!p.hidden_profile,
+        role:roleById[String(id)]||null,
         battles:s?s.battles:0, wins:s?s.wins:0, damage:s?s.damage_dealt:0, frags:s?s.frags:0,
       });
     }
-    rows.sort((a,b)=>(b.battles?b.damage/b.battles:0)-(a.battles?a.damage/a.battles:0));
+    // ordina: prima per gerarchia del ruolo, poi per danno medio
+    rows.sort((a,b)=>{
+      const ra=roleRank(a.role), rb=roleRank(b.role);
+      if(ra!==rb) return ra-rb;
+      return (b.battles?b.damage/b.battles:0)-(a.battles?a.damage/a.battles:0);
+    });
     renderRoster(c, rows);
     // indicizzazione navi in sottofondo (non blocca)
     indexClanShips(rows.filter(r=>!r.hidden && r.battles>0));
   }catch(e){box.innerHTML=`<p class="cl-sub">Error: ${e.message}</p>`;}
 }
 
+/* etichette e ordine gerarchico dei ruoli clan (API WoWS) */
+const ROLE_LABEL={
+  commander:"Commander", executive_officer:"Deputy commander",
+  recruitment_officer:"Recruiter", commissioned_officer:"Officer",
+  combat_officer:"Officer", junior_officer:"Officer", line_officer:"Officer",
+  private:"Member", reservist:"Reservist",
+};
+const ROLE_ORDER={commander:0, executive_officer:1, recruitment_officer:2,
+  commissioned_officer:3, combat_officer:3, junior_officer:4, line_officer:4,
+  private:5, reservist:6};
+function roleLabel(r){ return r?(ROLE_LABEL[r]||r.replace(/_/g," ")):"—"; }
+function roleRank(r){ return r in ROLE_ORDER?ROLE_ORDER[r]:9; }
+
 function renderRoster(c, rows){
   let html=`<span class="back" onclick="searchClans($('#clanSearch').value)">&larr; Back to results</span>
     <div class="cl-head"><span class="tag">[${c.tag}]</span><h1>${c.name||""}</h1></div>
     <p class="cl-sub">${rows.length} members · leader ${c.leader_name||"—"}</p>
     <div class="table-wrap"><table><thead><tr>
-      <th class="left">#</th><th class="left">Player</th><th>Battles</th>
+      <th class="left">#</th><th class="left">Player</th><th class="left">Role</th><th>Battles</th>
       <th>WR%</th><th>Avg. damage</th><th>Avg. frags</th></tr></thead><tbody>`;
   rows.forEach((r,i)=>{
     const wr=r.battles?r.wins/r.battles*100:0;
@@ -137,6 +165,7 @@ function renderRoster(c, rows){
     html+=`<tr>
       <td class="left" style="color:var(--txt-faint);font-weight:700">${i+1}</td>
       <td class="left"><a href="/?q=${encodeURIComponent(r.nickname)}" style="font-weight:600">${r.nickname}</a>${r.hidden?' <span class="cl-meta">hidden</span>':''}</td>
+      <td class="left"><span class="role-tag${r.role==='commander'?' role-cmd':''}">${roleLabel(r.role)}</span></td>
       <td>${r.battles?fmt(r.battles):"—"}</td>
       <td style="color:${wrColor(wr)};font-weight:600">${r.battles?fmt(wr,1):"—"}</td>
       <td>${r.battles?fmt(avgD):"—"}</td>
