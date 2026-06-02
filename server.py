@@ -94,10 +94,11 @@ def api_base(realm):
     return REALMS.get(realm, REALMS[DEFAULT_REALM])
 
 
-# Endpoint che vivono nel namespace 'wgn' (Wargaming Network) invece di 'wows'.
-# In World of Warships le info clan di un account stanno sotto /wgn/.
-WGN_ENDPOINTS = ("clans/accountinfo", "clans/info", "clans/list",
-                 "clans/membersinfo", "clans/glossary")
+# In World of Warships gli endpoint clan (clans/list, clans/info,
+# clans/accountinfo) vivono sotto il namespace 'wows' sul dominio
+# worldofwarships, NON sotto 'wgn'. Quindi la lista WGN qui è vuota:
+# nessuno degli endpoint che usiamo va dirottato su wgn/worldoftanks.
+WGN_ENDPOINTS = ()
 
 
 def build_wg_url(realm, endpoint, params):
