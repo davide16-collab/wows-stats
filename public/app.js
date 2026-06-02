@@ -36,6 +36,16 @@ async function loadStatic() {
   if (!_expected) _expected = await getExpected();
 }
 
+/* ---------- modalità di gioco ---------- */
+/* key = nome del campo nell'API; label = etichetta del tab. */
+const MODES = [
+  { key: "pvp", label: "Random" },
+  { key: "rank_solo", label: "Ranked" },
+  { key: "pve", label: "Operazioni" },
+  { key: "oper_solo", label: "Operazioni (solo)" },
+  { key: "club", label: "Brawl" },
+];
+
 /* ---------- scale colori ---------- */
 const PR_SCALE = [
   [0, "#a0a0a0", "—"],
@@ -153,9 +163,13 @@ async function loadPlayer(accountId, nick) {
   showStatus(`<div class="spinner"></div>Carico le statistiche di ${nick || accountId}&hellip;`);
   try {
     await loadStatic();
+    const modeFields = MODES.map(m =>
+      `statistics.${m.key}.battles,statistics.${m.key}.wins,statistics.${m.key}.damage_dealt,` +
+      `statistics.${m.key}.frags,statistics.${m.key}.survived_battles,statistics.${m.key}.xp`
+    ).join(",");
     const info = await wg("account/info", {
       account_id: accountId,
-      fields: "nickname,account_id,created_at,last_battle_time,hidden_profile,leveling_tier,statistics.pvp",
+      fields: "nickname,account_id,created_at,last_battle_time,hidden_profile,leveling_tier," + modeFields,
     });
     const player = info[String(accountId)];
     if (!player) throw new Error("Profilo non disponibile.");
@@ -173,9 +187,12 @@ async function loadPlayer(accountId, nick) {
 
     let ships = [];
     if (!player.hidden_profile) {
+      const shipModeFields = MODES.map(m =>
+        `${m.key}.battles,${m.key}.wins,${m.key}.damage_dealt,${m.key}.frags,${m.key}.survived_battles,${m.key}.xp`
+      ).join(",");
       const ss = await wg("ships/stats", {
         account_id: accountId,
-        fields: "ship_id,last_battle_time,pvp.battles,pvp.wins,pvp.damage_dealt,pvp.frags,pvp.survived_battles,pvp.xp",
+        fields: "ship_id,last_battle_time," + shipModeFields,
       });
       ships = (ss[String(accountId)] || []);
     }
@@ -188,17 +205,26 @@ async function loadPlayer(accountId, nick) {
 
 /* ---------- rendering profilo ---------- */
 let _ships = [], _sortKey = "battles", _sortDir = -1, _tierFilter = 0;
+let _player = null, _clanTag = null, _allShips = [], _activeMode = "pvp", _availModes = [];
+
+function modeStats(obj, key) {
+  return (obj && obj.statistics && obj.statistics[key]) || (obj && obj[key]) || null;
+}
 
 function renderProfile(player, clanTag, ships) {
-  const pvp = (player.statistics && player.statistics.pvp) || {};
-  const b = pvp.battles || 0;
+  _player = player; _clanTag = clanTag; _allShips = ships;
+
+  // quali modalità hanno almeno una battaglia (a livello account)
+  _availModes = MODES.filter(m => {
+    const s = modeStats(player, m.key);
+    return s && s.battles > 0;
+  });
+  if (!_availModes.length) _availModes = [MODES[0]]; // almeno Random
+  _activeMode = _availModes[0].key;
+
+  // PR complessivo: sempre calcolato su Random (standard wows-numbers)
   const overallPR = ships.length ? computePR(ships) : null;
   const prc = prColor(overallPR || 0);
-  const wr = b ? pvp.wins / b * 100 : 0;
-  const deaths = b - (pvp.survived_battles || 0);
-
-  const stat = (k, v, sub = "") =>
-    `<div class="stat"><div class="k">${k}</div><div class="v">${v}${sub ? `<small>${sub}</small>` : ""}</div></div>`;
 
   let html = `
   <div class="pcard">
@@ -219,25 +245,71 @@ function renderProfile(player, clanTag, ships) {
     </div>
   </div>`;
 
-  if (b) {
-    html += `<div class="stat-grid">
-      ${stat("Battaglie (random)", fmt(b))}
-      ${`<div class="stat"><div class="k">Win rate</div><div class="v" style="color:${wrColor(wr)}">${fmt(wr, 2)}<small>%</small></div></div>`}
-      ${stat("Danno medio", fmt(b ? pvp.damage_dealt / b : 0))}
-      ${stat("Frag medi", fmt(b ? pvp.frags / b : 0, 2))}
-      ${stat("Sopravvivenza", fmt(b ? pvp.survived_battles / b * 100 : 0, 1), "%")}
-      ${stat("XP media", fmt(b ? pvp.xp / b : 0))}
-      ${stat("K/D", fmt(deaths ? pvp.frags / deaths : pvp.frags, 2))}
-      ${stat("Vittorie", fmt(pvp.wins || 0))}
+  // barra dei tab modalità (solo se c'è più di una modalità)
+  if (_availModes.length > 1) {
+    html += `<div class="mode-tabs" id="modeTabs">
+      ${_availModes.map((m, i) =>
+        `<button data-mode="${m.key}" class="${i === 0 ? "on" : ""}">${m.label}</button>`).join("")}
     </div>`;
   }
 
-  // tabella navi
-  if (ships.length) {
+  // contenitore che verrà riempito in base alla modalità attiva
+  html += `<div id="modeContent"></div>`;
+
+  els.profile.innerHTML = html;
+  show(els.profile);
+
+  bindModeTabs();
+  drawMode();  // disegna la modalità attiva (stat + tabella navi)
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function bindModeTabs() {
+  const bar = document.getElementById("modeTabs");
+  if (!bar) return;
+  bar.addEventListener("click", e => {
+    const btn = e.target.closest("button"); if (!btn) return;
+    _activeMode = btn.dataset.mode;
+    [...bar.children].forEach(b => b.classList.toggle("on", b === btn));
+    drawMode();
+  });
+}
+
+/* disegna stat-grid + tabella navi per la modalità attiva */
+function drawMode() {
+  const key = _activeMode;
+  const pvp = modeStats(_player, key) || {};
+  const b = pvp.battles || 0;
+  const wr = b ? pvp.wins / b * 100 : 0;
+  const deaths = b - (pvp.survived_battles || 0);
+  const modeLabel = (MODES.find(m => m.key === key) || {}).label || "";
+
+  const stat = (k, v, sub = "") =>
+    `<div class="stat"><div class="k">${k}</div><div class="v">${v}${sub ? `<small>${sub}</small>` : ""}</div></div>`;
+
+  let html = "";
+  if (b) {
+    html += `<div class="stat-grid">
+      ${stat("Battaglie", fmt(b))}
+      <div class="stat"><div class="k">Win rate</div><div class="v" style="color:${wrColor(wr)}">${fmt(wr, 2)}<small>%</small></div></div>
+      ${stat("Danno medio", fmt(pvp.damage_dealt / b))}
+      ${stat("Frag medi", fmt(pvp.frags / b, 2))}
+      ${stat("Sopravvivenza", fmt(pvp.survived_battles / b * 100, 1), "%")}
+      ${stat("XP media", fmt(pvp.xp / b))}
+      ${stat("K/D", fmt(deaths ? pvp.frags / deaths : pvp.frags, 2))}
+      ${stat("Vittorie", fmt(pvp.wins || 0))}
+    </div>`;
+  } else {
+    html += `<div class="empty-mode">Nessuna battaglia registrata in ${modeLabel}.</div>`;
+  }
+
+  // navi giocate in questa modalità
+  const modeShips = _allShips.filter(s => { const ms = s[key]; return ms && ms.battles; });
+  if (modeShips.length) {
     const tiers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
     html += `<section class="ships">
       <div class="ships-head">
-        <h2>Navi giocate (${ships.filter(s => s.pvp && s.pvp.battles).length})</h2>
+        <h2>Navi giocate (${modeShips.length})</h2>
         <div class="tier-filter" id="tierFilter">
           <button data-t="0" class="on">Tutti</button>
           ${tiers.slice(1).map(t => `<button data-t="${t}">${roman(t)}</button>`).join("")}
@@ -259,23 +331,21 @@ function renderProfile(player, clanTag, ships) {
     </section>`;
   }
 
-  els.profile.innerHTML = html;
-  show(els.profile);
+  document.getElementById("modeContent").innerHTML = html;
 
-  // attiva tabella
-  if (ships.length) {
-    _ships = ships.filter(s => s.pvp && s.pvp.battles).map(enrichShip);
+  if (modeShips.length) {
+    _ships = modeShips.map(s => enrichShip(s, key));
     _sortKey = "battles"; _sortDir = -1; _tierFilter = 0;
     bindTable();
     drawShips();
   }
-  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function enrichShip(s) {
+function enrichShip(s, key = "pvp") {
   const meta = _shipsMeta[String(s.ship_id)] || {};
-  const pvp = s.pvp;
-  const pr = shipPR(s);
+  const ms = s[key] || {};
+  // i valori attesi del PR esistono solo per Random: PR per nave solo in 'pvp'
+  const pr = key === "pvp" ? shipPR(s) : null;
   return {
     raw: s, ship_id: s.ship_id,
     name: meta.name || `#${s.ship_id}`,
@@ -283,10 +353,10 @@ function enrichShip(s) {
     type: prettyType(meta.type),
     nation: meta.nation || "",
     premium: !!meta.is_premium || !!meta.is_special,
-    battles: pvp.battles,
-    wr: pvp.wins / pvp.battles * 100,
-    dmg: pvp.damage_dealt / pvp.battles,
-    frags: pvp.frags / pvp.battles,
+    battles: ms.battles,
+    wr: ms.wins / ms.battles * 100,
+    dmg: ms.damage_dealt / ms.battles,
+    frags: ms.frags / ms.battles,
     pr,
   };
 }
