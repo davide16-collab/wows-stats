@@ -70,7 +70,7 @@ const fmt=(n,d=0)=>(n==null||isNaN(n))?"—":Number(n).toLocaleString("en-GB",{m
 const WR_SCALE=[[0,"#86868b"],[0.001,"#d11500"],[47,"#d97000"],[50,"#b8860b"],[52,"#3a9400"],[54,"#2e7d00"],[56,"#009b8a"],[60,"#b521d6"],[65,"#8a0ba8"]];
 function wrColor(wr){let c=WR_SCALE[0][1];for(const r of WR_SCALE)if(wr>=r[0])c=r[1];return c;}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-async function wg(endpoint,params){const q=new URLSearchParams({...params,realm:REALM});const r=await fetch(`/api/wg/${endpoint}?${q}`);return r.json();}
+async function wg(endpoint,params){const q=new URLSearchParams({...params,realm:REALM});const r=await fetch(`/api/wg/${endpoint}?${q}`);const j=await r.json();return (j&&j.data!==undefined)?j.data:j;}
 
 $("#clanGo").onclick=()=>searchClans($("#clanSearch").value);
 $("#clanSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchClans(e.target.value);});
@@ -82,8 +82,7 @@ async function searchClans(name){
   if(name.length<2){box.innerHTML=`<p class="cl-sub">Type at least 2 characters.</p>`;return;}
   box.innerHTML=`<div class="status"><div class="spinner"></div></div>`;
   try{
-    const res=await wg("clans/list",{search:name,limit:20});
-    const list=res.data||res||[];
+    const list=await wg("clans/list",{search:name,limit:20})||[];
     if(!list.length){box.innerHTML=`<p class="cl-sub">No clan found for “${name}”.</p>`;return;}
     let html=`<ul class="cl-list">`;
     for(const c of list){
@@ -154,7 +153,7 @@ async function indexClanShips(members){
   for(const m of members){
     try{
       const ss=await wg("ships/stats",{account_id:m.account_id,fields:"ship_id,pvp.battles,pvp.wins,pvp.damage_dealt,pvp.frags"});
-      const arr=ss[String(m.account_id)]||ss.data&&ss.data[String(m.account_id)]||[];
+      const arr=(ss&&ss[String(m.account_id)])||[];
       const payload=[];
       for(const sh of arr){const p=sh.pvp;if(p&&p.battles)payload.push({ship_id:sh.ship_id,battles:p.battles,wins:p.wins,damage:p.damage_dealt,frags:p.frags});}
       if(payload.length){
