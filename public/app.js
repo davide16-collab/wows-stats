@@ -259,7 +259,8 @@ function renderProfile(player, clanTag, ships) {
     return s && s.battles > 0;
   });
   if (!_availModes.length) _availModes = [MODES[0]]; // almeno Random
-  _activeMode = _availModes[0].key;
+  // Random ('pvp') è sempre la modalità iniziale se presente; altrimenti la prima.
+  _activeMode = _availModes.some(m => m.key === "pvp") ? "pvp" : _availModes[0].key;
 
   // PR complessivo: sempre calcolato su Random (standard wows-numbers)
   const overallPR = ships.length ? computePR(ships) : null;
@@ -287,8 +288,8 @@ function renderProfile(player, clanTag, ships) {
   // barra dei tab modalità (sempre visibile, anche con una sola modalità)
   if (_availModes.length >= 1) {
     html += `<div class="mode-tabs" id="modeTabs">
-      ${_availModes.map((m, i) =>
-        `<button data-mode="${m.key}" class="${i === 0 ? "on" : ""}">${m.label}</button>`).join("")}
+      ${_availModes.map((m) =>
+        `<button data-mode="${m.key}" class="${m.key === _activeMode ? "on" : ""}">${m.label}</button>`).join("")}
     </div>`;
   }
 
@@ -368,6 +369,8 @@ function drawMode() {
         <tbody id="shipBody"></tbody>
       </table></div>
     </section>`;
+  } else if (b > 0 && key !== "pvp") {
+    html += `<div class="empty-mode" style="margin-top:24px">Le statistiche per nave non sono disponibili per questa modalità tramite l'API.</div>`;
   }
 
   document.getElementById("modeContent").innerHTML = html;
