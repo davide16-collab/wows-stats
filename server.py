@@ -275,6 +275,84 @@ def db_leaderboard_players(offset=0, limit=50):
         return {"rows": rows, "total": total}
 
 
+def db_rank_player(nick):
+    """Posizione di un giocatore (per nick) nella classifica globale.
+
+    Ritorna {found, rank, total, nickname, avg_damage} oppure {found:False}.
+    Il rank = quanti giocatori hanno danno medio strettamente superiore, +1.
+    """
+    if not DATABASE_URL or not nick:
+        return {"found": False}
+    with _db_lock:
+        if not db_init():
+            return {"found": False}
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT account_id, nickname, battles, damage
+                        FROM snapshots
+                        WHERE LOWER(nickname)=LOWER(%s) AND battles >= 100
+                        LIMIT 1
+                    """, (nick,))
+                    row = cur.fetchone()
+                    if not row:
+                        return {"found": False}
+                    acc, nm, b, d = row
+                    avg = d / b if b else 0
+                    cur.execute("""
+                        SELECT COUNT(*) FROM snapshots
+                        WHERE battles >= 100 AND (damage / NULLIF(battles,0)) > %s
+                    """, (avg,))
+                    higher = int(cur.fetchone()[0] or 0)
+                    cur.execute("SELECT COUNT(*) FROM snapshots WHERE battles >= 100")
+                    total = int(cur.fetchone()[0] or 0)
+                    return {"found": True, "rank": higher + 1, "total": total,
+                            "nickname": nm, "avg_damage": avg, "account_id": acc}
+        except Exception as e:  # noqa
+            sys.stderr.write("db_rank_player fallita: %s\n" % e)
+            return {"found": False}
+
+
+def db_rank_ship(ship_id, nick):
+    """Posizione di un giocatore su una nave specifica (per nick)."""
+    if not DATABASE_URL or not nick or not ship_id:
+        return {"found": False}
+    with _db_lock:
+        if not db_init():
+            return {"found": False}
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    # trovo l'account dal nick (via snapshots) e poi la sua riga nave
+                    cur.execute("SELECT account_id FROM snapshots WHERE LOWER(nickname)=LOWER(%s) LIMIT 1", (nick,))
+                    arow = cur.fetchone()
+                    if not arow:
+                        return {"found": False}
+                    acc = arow[0]
+                    cur.execute("""
+                        SELECT battles, damage FROM ship_index
+                        WHERE account_id=%s AND ship_id=%s AND battles >= 50
+                    """, (acc, ship_id))
+                    srow = cur.fetchone()
+                    if not srow:
+                        return {"found": False}
+                    b, d = srow
+                    avg = d / b if b else 0
+                    cur.execute("""
+                        SELECT COUNT(*) FROM ship_index
+                        WHERE ship_id=%s AND battles >= 50 AND (damage / NULLIF(battles,0)) > %s
+                    """, (ship_id, avg))
+                    higher = int(cur.fetchone()[0] or 0)
+                    cur.execute("SELECT COUNT(*) FROM ship_index WHERE ship_id=%s AND battles >= 50", (ship_id,))
+                    total = int(cur.fetchone()[0] or 0)
+                    return {"found": True, "rank": higher + 1, "total": total,
+                            "avg_damage": avg, "account_id": acc}
+        except Exception as e:  # noqa
+            sys.stderr.write("db_rank_ship fallita: %s\n" % e)
+            return {"found": False}
+
+
 # ---------------------------------------------------------------------------
 # CONFIGURAZIONE
 # ---------------------------------------------------------------------------
@@ -534,6 +612,22 @@ class Handler(BaseHTTPRequestHandler):
                 res = db_leaderboard_players(offset, limit)
                 self.send_json({"status": "ok", "enabled": bool(DATABASE_URL),
                                 "rows": res["rows"], "total": res["total"]})
+                return
+
+            if path == "/api/leaderboard/rank_player":
+                nick = (qs.get("nickname", [""])[0]).strip()
+                res = db_rank_player(nick)
+                self.send_json({"status": "ok", "enabled": bool(DATABASE_URL), **res})
+                return
+
+            if path == "/api/leaderboard/rank_ship":
+                nick = (qs.get("nickname", [""])[0]).strip()
+                try:
+                    sid = int(qs.get("ship_id", ["0"])[0])
+                except Exception:
+                    sid = 0
+                res = db_rank_ship(sid, nick)
+                self.send_json({"status": "ok", "enabled": bool(DATABASE_URL), **res})
                 return
 
             # file statici
