@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>About &amp; how it works — Wows Stats</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  .ab-wrap{max-width:780px;margin:0 auto;}
+  .ab-wrap h1{font-size:32px;font-weight:700;letter-spacing:-0.03em;margin:0 0 6px;}
+  .ab-wrap h2{font-size:21px;font-weight:600;letter-spacing:-0.02em;margin:34px 0 10px;}
+  .ab-wrap h3{font-size:16px;font-weight:600;margin:20px 0 6px;}
+  .ab-wrap p{color:var(--txt-dim);line-height:1.65;margin:0 0 12px;}
+  .ab-wrap .lead{font-size:18px;color:var(--txt-dim);margin-bottom:8px;}
+  .ab-wrap ul{color:var(--txt-dim);line-height:1.65;padding-left:20px;margin:0 0 12px;}
+  .ab-wrap li{margin:4px 0;}
+  .ab-wrap code{font-family:var(--mono);font-size:13px;background:var(--card-2);border:1px solid var(--line);
+    padding:2px 6px;border-radius:6px;color:var(--txt);}
+  .ab-formula{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;font-family:var(--mono);font-size:14px;color:var(--txt);margin:8px 0 16px;box-shadow:var(--shadow-sm);}
+  .ab-scale{display:flex;flex-direction:column;gap:6px;margin:10px 0 16px;}
+  .ab-row{display:flex;align-items:center;gap:12px;}
+  .ab-chip{width:14px;height:14px;border-radius:4px;flex:0 0 auto;}
+  .ab-range{font-family:var(--mono);font-size:13px;color:var(--txt-faint);min-width:104px;}
+  .ab-lab{font-size:14px;color:var(--txt);font-weight:500;}
+  .ab-note{background:var(--card-2);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 18px;color:var(--txt-dim);font-size:14px;line-height:1.6;margin:12px 0;}
+</style>
+  <script src="theme.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" onclick="location.href='/'" title="Home" style="cursor:pointer">
+      <span class="brand-mark"></span><span class="brand-name">WOWS<span class="amber">STATS</span></span>
+    </div>
+    <nav style="display:flex;gap:12px;margin-left:auto;align-items:center">
+      <a href="/" class="compare-btn" style="text-decoration:none">SEARCH</a>
+      <a href="/leaderboards.html" class="compare-btn" style="text-decoration:none">RANKINGS</a>
+      <a href="/clan.html" class="compare-btn" style="text-decoration:none">CLANS</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <div class="ab-wrap">
+      <h1>How it works</h1>
+      <p class="lead">What the numbers on this site mean, how Personal Rating is calculated, and where the data comes from.</p>
+
+      <h2>Where the data comes from</h2>
+      <p>Player and ship statistics are read live from the official Wargaming Public API every time you search. Battles, win rate, average damage and so on always reflect the latest values the API returns (Wargaming updates a player's totals at the end of each battle).</p>
+      <p>This is an unofficial, fan-made site. It is not affiliated with the game's publisher.</p>
+
+      <h2>Personal Rating (PR)</h2>
+      <p>PR is a single number that compares your performance on each ship to the expected performance for that ship. It follows the same idea as the well-known WoWS Numbers / Wahzehd formula. It is not an official in-game stat — it exists only to compare players here.</p>
+
+      <h3>The formula</h3>
+      <p>For every ship you have played we take three ratios — your average damage, frags and win rate divided by the expected values — then normalise and combine them:</p>
+      <div class="ab-formula">
+        ratios: rDmg, rFrags, rWins (yours ÷ expected)<br/>
+        nDmg = max(0, (rDmg − 0.4) / 0.6)<br/>
+        nFrags = max(0, (rFrags − 0.1) / 0.9)<br/>
+        nWins = max(0, (rWins − 0.7) / 0.3)<br/>
+        <strong>PR = 700·nDmg + 300·nFrags + 150·nWins</strong>
+      </div>
+      <p>That weighting is roughly 60% damage, 25% frags, 15% win rate. If you match the expected values exactly on all three, your PR is about <code>1150</code> — the middle of the "Average" band.</p>
+
+      <h3>Where the expected values come from</h3>
+      <p>This is the part that makes PR work without an official source. We use two layers:</p>
+      <ul>
+        <li><strong>Indexed averages</strong> — every time a player is searched, their per-ship stats are saved. The expected value for a ship is the average across all indexed players who own it. The more the site is used, the better these become.</li>
+        <li><strong>Tier + class fallback</strong> — for ships the database has not seen enough yet, a reasonable estimate based on the ship's tier and class is used, so PR works on every ship from day one.</li>
+      </ul>
+      <div class="ab-note">Because of this, PR is only as accurate as the data indexed so far. On rarely-seen ships it leans on the estimate; on popular ships it reflects real indexed averages. It improves automatically over time.</div>
+
+      <h2>PR colours</h2>
+      <p>Wherever a PR number appears, its colour follows these bands:</p>
+      <div class="ab-scale" id="prScale"></div>
+
+      <h2>Win rate colours</h2>
+      <p>Win rate uses its own separate colour scale, based on win percentage (not PR):</p>
+      <div class="ab-scale" id="wrScale"></div>
+      <p>PR and win rate are independent: you can have a high PR with an average win rate if your damage and frags are strong, and vice-versa.</p>
+
+      <h2>Rankings</h2>
+      <p>The leaderboards are built from the players this site has indexed — not from every player in the game (the API does not expose that). They start small and grow as more players and clans are searched. Opening a clan indexes all its members at once, which is the fastest way to fill the rankings.</p>
+      <ul>
+        <li>Player leaderboard: needs at least 100 random battles to appear.</li>
+        <li>Per-ship leaderboard: needs at least 50 battles on that ship.</li>
+        <li>You can search any player's position with the "Find a player" box on each leaderboard.</li>
+      </ul>
+
+      <h2>Other features</h2>
+      <ul>
+        <li><strong>Compare</strong> — put two players side by side, overall and on a shared ship.</li>
+        <li><strong>Clans</strong> — search a clan, see its roster with roles, and index its members.</li>
+        <li><strong>Languages</strong> — the interface is available in English, Italian, French, German and Spanish.</li>
+        <li><strong>Light / dark theme</strong> — follows your system by default; switch any time with the ☀️/🌙 button.</li>
+      </ul>
+
+      <p style="margin-top:30px;font-size:13px;color:var(--txt-faint)">Unofficial stats site. Data via the Wargaming Public API. Not affiliated with the game publisher.</p>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span>Wows Stats &mdash; data via the Wargaming Public API. &middot; <a href="/about.html">How it works</a></span>
+    <span id="footMeta"></span>
+  </footer>
+
+<script>
+// stesse soglie/colori usati nel resto del sito (tema chiaro)
+const PR_BANDS=[
+  ["2450+","Super unicum","#8a0ba8"],
+  ["2100 – 2449","Unicum","#b521d6"],
+  ["1750 – 2099","Great","#009b8a"],
+  ["1550 – 1749","Very good","#2e7d00"],
+  ["1350 – 1549","Good","#3a9400"],
+  ["1100 – 1349","Average","#b8860b"],
+  ["750 – 1099","Below average","#d97000"],
+  ["0 – 749","Bad","#d11500"],
+];
+const WR_BANDS=[
+  ["65%+","Super unicum","#8a0ba8"],
+  ["60 – 64.9%","Unicum","#b521d6"],
+  ["56 – 59.9%","Great","#009b8a"],
+  ["54 – 55.9%","Very good","#2e7d00"],
+  ["52 – 53.9%","Good","#3a9400"],
+  ["50 – 51.9%","Average","#b8860b"],
+  ["47 – 49.9%","Below average","#d97000"],
+  ["< 47%","Bad","#d11500"],
+];
+function fillScale(id,bands){
+  document.getElementById(id).innerHTML=bands.map(b=>
+    `<div class="ab-row"><span class="ab-chip" style="background:${b[2]}"></span>`+
+    `<span class="ab-range">${b[0]}</span><span class="ab-lab" style="color:${b[2]}">${b[1]}</span></div>`).join("");
+}
+fillScale("prScale",PR_BANDS);
+fillScale("wrScale",WR_BANDS);
+(async()=>{try{const c=await(await fetch("/api/config")).json();document.getElementById("footMeta").textContent=`realm ${(c.realm||"eu").toUpperCase()}`;}catch(_){}})();
+</script>
+</body>
+</html>
