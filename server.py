@@ -715,6 +715,16 @@ def get_expected():
 # CLAN BATTLES (Strada A: API ufficiale clans/season + clans/seasonstats)
 # ---------------------------------------------------------------------------
 CB_LEAGUES = {0: "Hurricane", 1: "Typhoon", 2: "Storm", 3: "Gale", 4: "Squall"}
+CB_LEAGUE_COLORS = {0: "#CDA4FF", 1: "#BEE7BD", 2: "#E3D6A0", 3: "#CCE4E4", 4: "#CC9966"}
+
+# Il rating CB di un clan (lega/divisione/punti) NON e' nell'API documentata
+# (clans/seasonstats vuole un account_id). Vive nel portale clan, la stessa
+# fonte usata dai siti grandi: clans.worldofwarships.<realm>/api/clanbase/<id>/claninfo/
+CLAN_PORTAL = {
+    "eu":   "https://clans.worldofwarships.eu",
+    "na":   "https://clans.worldofwarships.com",
+    "asia": "https://clans.worldofwarships.asia",
+}
 
 # La nazionalita' dei clan non esiste nell'API: lista curata, estendibile con
 # un file 'clan_nations.json' in radice -> { "TAG": "it", ... } (tag MAIUSCOLO).
@@ -746,20 +756,18 @@ def get_cb_season(realm):
     try:
         doc = fetch_json(build_wg_url(realm, "clans/season", {}))
         data = doc.get("data") if isinstance(doc, dict) else None
-        ids = []
-        if isinstance(data, dict):
-            for k, v in data.items():
-                try:
-                    ids.append(int(k))
-                except Exception:
-                    if isinstance(v, dict) and v.get("season_id") is not None:
-                        ids.append(int(v["season_id"]))
-        elif isinstance(data, list):
-            for v in data:
-                if isinstance(v, dict) and v.get("season_id") is not None:
-                    ids.append(int(v["season_id"]))
-        if ids:
-            season_id = max(ids)
+        items = list(data.values()) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        best_start = -1
+        for v in items:
+            if not isinstance(v, dict) or v.get("season_id") is None:
+                continue
+            try:
+                st = int(v.get("start_time"))
+            except Exception:
+                st = -1
+            if st > best_start:
+                best_start = st
+                season_id = int(v["season_id"])
     except Exception as e:  # noqa
         sys.stderr.write("get_cb_season fallita: %s\n" % e)
     _cache_set(ckey, season_id)
@@ -826,6 +834,60 @@ def fetch_clan_cb(realm, clan_id, season_id):
         "division_rating": g(best, "division_rating") or 0,
         "battles": int(g(best, "battles_count", "battles") or 0),
         "wins": int(g(best, "wins_count", "wins") or 0),
+    }
+
+
+def fetch_clan_ladder(realm, clan_id):
+    """Posizione in classifica Clan Battles dal portale clan (oggetto wows_ladder).
+    Ritorna un dict normalizzato o None. Parsing difensivo."""
+    if not clan_id:
+        return None
+    base = CLAN_PORTAL.get(realm, CLAN_PORTAL["eu"])
+    url = "%s/api/clanbase/%s/claninfo/" % (base, clan_id)
+    try:
+        doc = fetch_json_browser(url)
+    except Exception as e:  # noqa
+        sys.stderr.write("fetch_clan_ladder fallita: %s\n" % e)
+        return None
+    ladder = None
+    try:
+        ladder = doc["clanview"]["wows_ladder"]
+    except Exception:
+        ladder = None
+    if not isinstance(ladder, dict):
+        found = []
+
+        def walk(x):
+            if isinstance(x, dict):
+                if "public_rating" in x and ("league" in x or "division" in x):
+                    found.append(x)
+                else:
+                    for v in x.values():
+                        walk(v)
+            elif isinstance(x, list):
+                for v in x:
+                    walk(v)
+
+        walk(doc)
+        ladder = found[0] if found else None
+    if not isinstance(ladder, dict):
+        return None
+
+    def g(*keys):
+        for k in keys:
+            v = ladder.get(k)
+            if isinstance(v, (int, float)):
+                return v
+        return None
+
+    return {
+        "season_id": g("season_number", "season_id"),
+        "public_rating": g("public_rating", "rating") or 0,
+        "league": g("league"),
+        "division": g("division"),
+        "division_rating": g("division_rating") or 0,
+        "battles": int(g("battles_count", "battles") or 0),
+        "wins": int(g("wins_count", "wins") or 0),
     }
 
 
@@ -920,17 +982,25 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception as e:  # noqa
                         search_raw = {"error": str(e)}
                 season = get_cb_season(realm)
-                seasonstats_raw = None
+                ladder_dbg = None
                 if cid:
+                    base = CLAN_PORTAL.get(realm, CLAN_PORTAL["eu"])
                     try:
-                        seasonstats_raw = fetch_json(build_wg_url(realm, "clans/seasonstats", {"clan_id": cid}))
+                        ladder_raw = fetch_json_browser("%s/api/clanbase/%s/claninfo/" % (base, cid))
                     except Exception as e:  # noqa
-                        seasonstats_raw = {"error": str(e)}
+                        ladder_raw = {"error": str(e)}
+                    if isinstance(ladder_raw, dict) and "error" not in ladder_raw:
+                        cv = ladder_raw.get("clanview") if isinstance(ladder_raw.get("clanview"), dict) else None
+                        wl = cv.get("wows_ladder") if isinstance(cv, dict) else None
+                        ladder_dbg = {"top_keys": list(ladder_raw.keys()),
+                                      "clanview_keys": (list(cv.keys()) if cv else None),
+                                      "wows_ladder": wl if wl is not None else "(non trovato)"}
+                    else:
+                        ladder_dbg = ladder_raw
                 self.send_json({"status": "ok", "clan_id": cid, "season_id": season,
                                 "search_raw": search_raw,
-                                "season_raw": fetch_json(build_wg_url(realm, "clans/season", {})),
-                                "seasonstats_raw": seasonstats_raw,
-                                "parsed": fetch_clan_cb(realm, cid, season) if cid else None})
+                                "ladder": ladder_dbg,
+                                "parsed": fetch_clan_ladder(realm, cid) if cid else None})
                 return
 
             if path == "/api/config":
@@ -1047,8 +1117,7 @@ class Handler(BaseHTTPRequestHandler):
                 ) if cid else False
                 if cid:
                     try:
-                        season = get_cb_season(DEFAULT_REALM)
-                        cb = fetch_clan_cb(DEFAULT_REALM, cid, season) if season is not None else None
+                        cb = fetch_clan_ladder(DEFAULT_REALM, cid)
                         if cb:
                             nat = clan_nations().get(str(data.get("tag", "")).upper())
                             db_save_clan_cb(cid, data.get("tag", ""), data.get("name", ""), nat, cb)
