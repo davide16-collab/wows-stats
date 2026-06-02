@@ -1,5 +1,9 @@
 "use strict";
 
+/* Mostra/nasconde il Personal Rating (badge profilo + colonna navi).
+   Metti true per riattivarlo: il codice di calcolo resta tutto qui sotto. */
+const SHOW_PR = false;
+
 /* ---------- multilingua ---------- */
 /* Termini di gioco affermati (Win rate, Personal Rating, Random/Ranked/Co-op)
    restano in inglese in tutte le lingue, come fa la community WoWS. */
@@ -28,7 +32,7 @@ const I18N = {
     shipsPlayed: n => `Ships played (${n})`,
     all: "All", ship: "Ship", tier: "Tier", type: "Type",
     shipsNoMode: "Per-ship statistics are not available for this mode via the API.",
-    footer: 'Wows Stats \u2014 data via Wargaming Public API. Personal Rating &amp; expected values: <a href="https://wows-numbers.com/personal/rating/" target="_blank" rel="noopener">WoWS Numbers</a>.',
+    footer: 'Wows Stats \u2014 data via the Wargaming Public API.',
     types: { Destroyer: "Destroyer", Cruiser: "Cruiser", Battleship: "Battleship", AirCarrier: "Aircraft Carrier", Submarine: "Submarine" },
     prLabels: ["\u2014", "Bad", "Below average", "Average", "Good", "Very good", "Great", "Unicum", "Super unicum"],
   },
@@ -56,7 +60,7 @@ const I18N = {
     shipsPlayed: n => `Navi giocate (${n})`,
     all: "Tutti", ship: "Nave", tier: "Tier", type: "Tipo",
     shipsNoMode: "Le statistiche per nave non sono disponibili per questa modalit\u00e0 tramite l'API.",
-    footer: 'Wows Stats \u2014 dati via Wargaming Public API. Personal Rating e valori attesi: <a href="https://wows-numbers.com/personal/rating/" target="_blank" rel="noopener">WoWS Numbers</a>.',
+    footer: 'Wows Stats \u2014 dati via Wargaming Public API.',
     types: { Destroyer: "Cacciatorpediniere", Cruiser: "Incrociatore", Battleship: "Corazzata", AirCarrier: "Portaerei", Submarine: "Sottomarino" },
     prLabels: ["\u2014", "Pessimo", "Sotto media", "Nella media", "Buono", "Molto buono", "Ottimo", "Unicum", "Super unicum"],
   },
@@ -84,7 +88,7 @@ const I18N = {
     shipsPlayed: n => `Navires jou\u00e9s (${n})`,
     all: "Tous", ship: "Navire", tier: "Tier", type: "Type",
     shipsNoMode: "Les statistiques par navire ne sont pas disponibles pour ce mode via l'API.",
-    footer: 'Wows Stats \u2014 donn\u00e9es via Wargaming Public API. Personal Rating et valeurs attendues : <a href="https://wows-numbers.com/personal/rating/" target="_blank" rel="noopener">WoWS Numbers</a>.',
+    footer: 'Wows Stats \u2014 donn\u00e9es via Wargaming Public API.',
     types: { Destroyer: "Destroyer", Cruiser: "Croiseur", Battleship: "Cuirass\u00e9", AirCarrier: "Porte-avions", Submarine: "Sous-marin" },
     prLabels: ["\u2014", "Mauvais", "Sous la moyenne", "Moyen", "Bon", "Tr\u00e8s bon", "Excellent", "Unicum", "Super unicum"],
   },
@@ -112,7 +116,7 @@ const I18N = {
     shipsPlayed: n => `Gespielte Schiffe (${n})`,
     all: "Alle", ship: "Schiff", tier: "Tier", type: "Typ",
     shipsNoMode: "Schiffsbezogene Statistiken sind f\u00fcr diesen Modus \u00fcber die API nicht verf\u00fcgbar.",
-    footer: 'Wows Stats \u2014 Daten via Wargaming Public API. Personal Rating &amp; erwartete Werte: <a href="https://wows-numbers.com/personal/rating/" target="_blank" rel="noopener">WoWS Numbers</a>.',
+    footer: 'Wows Stats \u2014 Daten via Wargaming Public API.',
     types: { Destroyer: "Zerst\u00f6rer", Cruiser: "Kreuzer", Battleship: "Schlachtschiff", AirCarrier: "Flugzeugtr\u00e4ger", Submarine: "U-Boot" },
     prLabels: ["\u2014", "Schlecht", "Unterdurchschnittlich", "Durchschnittlich", "Gut", "Sehr gut", "Hervorragend", "Unicum", "Super-Unicum"],
   },
@@ -140,7 +144,7 @@ const I18N = {
     shipsPlayed: n => `Barcos jugados (${n})`,
     all: "Todos", ship: "Barco", tier: "Tier", type: "Tipo",
     shipsNoMode: "Las estad\u00edsticas por barco no est\u00e1n disponibles para este modo v\u00eda API.",
-    footer: 'Wows Stats \u2014 datos via Wargaming Public API. Personal Rating y valores esperados: <a href="https://wows-numbers.com/personal/rating/" target="_blank" rel="noopener">WoWS Numbers</a>.',
+    footer: 'Wows Stats \u2014 datos via Wargaming Public API.',
     types: { Destroyer: "Destructor", Cruiser: "Crucero", Battleship: "Acorazado", AirCarrier: "Portaaviones", Submarine: "Submarino" },
     prLabels: ["\u2014", "Malo", "Bajo la media", "Medio", "Bueno", "Muy bueno", "Excelente", "Unicum", "S\u00faper unicum"],
   },
@@ -455,12 +459,12 @@ function renderProfile(player, clanTag, ships) {
   const prc = prColor(overallPR || 0);
 
   let html = `
-  <div class="pcard">
-    <div class="pr-badge" style="color:${prc.color}">
+  <div class="pcard${SHOW_PR ? "" : " no-pr"}">
+    ${SHOW_PR ? `<div class="pr-badge" style="color:${prc.color}">
       <div class="pr-val">${overallPR != null ? fmt(overallPR) : "—"}</div>
       <div class="pr-lab">PERSONAL RATING</div>
       <div class="pr-rank">${overallPR != null ? prc.label : ""}</div>
-    </div>
+    </div>` : ""}
     <div class="pinfo">
       <div class="pnick">${player.nickname}${clanTag ? `<span class="clan-tag">[${clanTag}]</span>` : ""}</div>
       <div class="pmeta">
@@ -552,7 +556,7 @@ function drawMode() {
           <th data-k="wr">WR%</th>
           <th data-k="dmg">${t("avgDamage")}</th>
           <th data-k="frags">${t("avgFrags")}</th>
-          <th data-k="pr">PR</th>
+          ${SHOW_PR ? `<th data-k="pr">PR</th>` : ""}
         </tr></thead>
         <tbody id="shipBody"></tbody>
       </table></div>
@@ -632,7 +636,7 @@ function drawShips() {
       <td class="wr-cell" style="color:${wrColor(s.wr)}">${fmt(s.wr, 1)}</td>
       <td>${fmt(s.dmg)}</td>
       <td>${fmt(s.frags, 2)}</td>
-      <td class="pr-cell" style="color:${prc.color}">${s.pr != null ? fmt(s.pr) : "—"}</td>
+      ${SHOW_PR ? `<td class="pr-cell" style="color:${prc.color}">${s.pr != null ? fmt(s.pr) : "—"}</td>` : ""}
     </tr>`;
   }).join("");
 }
