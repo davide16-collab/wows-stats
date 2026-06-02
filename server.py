@@ -58,6 +58,22 @@ def db_init():
                         frags      DOUBLE PRECISION
                     )
                 """)
+                # Indice navi: una riga per (giocatore, nave) coi suoi totali
+                # Random. Aggiornando la riga, niente doppi conteggi quando un
+                # giocatore viene ricercato piu' volte. Le medie attese si
+                # ricavano aggregando tutte le righe per nave.
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS ship_index (
+                        account_id BIGINT,
+                        ship_id    BIGINT,
+                        battles    BIGINT,
+                        wins       BIGINT,
+                        damage     DOUBLE PRECISION,
+                        frags      DOUBLE PRECISION,
+                        PRIMARY KEY (account_id, ship_id)
+                    )
+                """)
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_ship ON ship_index (ship_id)")
             conn.commit()
         _db_ready = True
     except Exception as e:  # noqa
@@ -103,6 +119,86 @@ def db_progress(account_id, nickname, battles, wins, damage, frags):
             sys.stderr.write("db_progress fallita: %s\n" % e)
             return {"enabled": True, "previous": None, "error": str(e)}
         return {"enabled": True, "previous": prev}
+
+
+def db_index_ships(account_id, ships):
+    """Salva/aggiorna i totali Random per nave di un giocatore.
+
+    `ships` = lista di dict {ship_id, battles, wins, damage, frags}.
+    Usa upsert per (account_id, ship_id): re-indicizzare aggiorna senza
+    gonfiare i totali aggregati.
+    """
+    if not DATABASE_URL or not ships:
+        return False
+    with _db_lock:
+        if not db_init():
+            return False
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.executemany("""
+                        INSERT INTO ship_index (account_id, ship_id, battles, wins, damage, frags)
+                        VALUES (%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT (account_id, ship_id) DO UPDATE SET
+                            battles=EXCLUDED.battles, wins=EXCLUDED.wins,
+                            damage=EXCLUDED.damage, frags=EXCLUDED.frags
+                    """, [(account_id, s["ship_id"], s["battles"], s["wins"],
+                           s["damage"], s["frags"]) for s in ships])
+                conn.commit()
+            return True
+        except Exception as e:  # noqa
+            sys.stderr.write("db_index_ships fallita: %s\n" % e)
+            return False
+
+
+def db_expected():
+    """Calcola le medie attese per nave aggregando l'indice.
+
+    Ritorna {ship_id: {average_damage_dealt, average_frags, win_rate, _players, _battles}}.
+    Solo navi con un minimo di battaglie totali, per evitare rumore.
+    """
+    if not DATABASE_URL:
+        return {}
+    # cache breve dedicata (le medie si arricchiscono di continuo)
+    with _cache_lock:
+        item = _cache.get("db_expected")
+        if item and (time.time() - item[0]) < 300:  # 5 minuti
+            return item[1]
+    out = {}
+    with _db_lock:
+        if not db_init():
+            return {}
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT ship_id,
+                               COUNT(*)        AS players,
+                               SUM(battles)    AS b,
+                               SUM(wins)       AS w,
+                               SUM(damage)     AS d,
+                               SUM(frags)      AS f
+                        FROM ship_index
+                        GROUP BY ship_id
+                        HAVING SUM(battles) >= 50
+                    """)
+                    for ship_id, players, b, w, d, f in cur.fetchall():
+                        if not b:
+                            continue
+                        out[str(ship_id)] = {
+                            "average_damage_dealt": d / b,
+                            "average_frags": f / b,
+                            "win_rate": w / b * 100.0,
+                            "_players": players,
+                            "_battles": int(b),
+                        }
+        except Exception as e:  # noqa
+            sys.stderr.write("db_expected fallita: %s\n" % e)
+            out = {}
+    # cache breve: si aggiorna spesso ma non a ogni richiesta
+    with _cache_lock:
+        _cache["db_expected"] = (time.time(), out)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -228,38 +324,38 @@ def get_ships_meta(realm):
 
 
 def get_expected():
-    """Restituisce i valori attesi per il Personal Rating.
+    """Valori attesi per il Personal Rating, combinando due fonti:
 
-    Priorità:
-    1. File locale 'expected.json' nella radice del progetto (generato dalla
-       pagina /build-expected.html campionando giocatori reali). È la fonte
-       principale: nessuna dipendenza da servizi esterni.
-    2. In mancanza del file, ritorna {} (il PR resta non calcolato).
+    1. Indice dal database (db_expected): medie per nave calcolate dai
+       giocatori indicizzati. È la fonte primaria e migliora nel tempo.
+    2. File 'expected.json' (se presente): usato come base/integrazione per
+       le navi che il database non copre ancora abbastanza.
 
-    Il vecchio download da wows-numbers è stato rimosso: il loro server è
-    inaffidabile/offline e blocca le richieste non-browser.
+    Il fallback per tier+classe sulle navi senza dati viene applicato dal
+    frontend, che dispone dei metadati (tier/tipo) di ogni nave.
     """
-    cached = _cache_get("expected")
-    if cached is not None:
-        return cached
-
+    # base: file statico (se c'è)
     table = {}
-    local_path = os.path.join(HERE, "expected.json")
-    if os.path.isfile(local_path):
-        try:
-            with open(local_path, "r", encoding="utf-8") as f:
-                doc = json.load(f)
-            # accetta sia {data:{...}} sia direttamente {...}
-            table = doc.get("data") if isinstance(doc, dict) and "data" in doc else doc
-            if not isinstance(table, dict):
-                table = {}
-        except Exception as e:  # noqa
-            sys.stderr.write("Lettura expected.json fallita: %s\n" % e)
-            table = {}
+    cached = _cache_get("expected_file")
+    if cached is not None:
+        table = dict(cached)
     else:
-        sys.stderr.write("expected.json non presente: PR non calcolato.\n")
+        local_path = os.path.join(HERE, "expected.json")
+        if os.path.isfile(local_path):
+            try:
+                with open(local_path, "r", encoding="utf-8") as f:
+                    doc = json.load(f)
+                base = doc.get("data") if isinstance(doc, dict) and "data" in doc else doc
+                if isinstance(base, dict):
+                    table = base
+            except Exception as e:  # noqa
+                sys.stderr.write("Lettura expected.json fallita: %s\n" % e)
+        _cache_set("expected_file", dict(table))
 
-    _cache_set("expected", table)
+    # sovrascrivi/integra con le medie del database (più fresche e specifiche)
+    db_vals = db_expected()
+    for sid, v in db_vals.items():
+        table[sid] = v
     return table
 
 
@@ -359,6 +455,39 @@ class Handler(BaseHTTPRequestHandler):
         except URLError as e:
             self.send_json({"status": "error",
                             "error": {"message": f"Rete non raggiungibile: {e.reason}"}}, 502)
+        except Exception as e:  # noqa
+            self.send_json({"status": "error", "error": {"message": str(e)}}, 500)
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/index":
+            self.send_json({"status": "error", "error": {"message": "Not found"}}, 404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length) if length else b"{}"
+            data = json.loads(body.decode("utf-8", "replace"))
+            acc = int(data.get("account_id", 0))
+            ships = data.get("ships", [])
+            # normalizza e filtra navi con almeno qualche battaglia
+            clean = []
+            for s in ships:
+                try:
+                    b = int(s.get("battles", 0))
+                    if b <= 0:
+                        continue
+                    clean.append({
+                        "ship_id": int(s["ship_id"]),
+                        "battles": b,
+                        "wins": int(s.get("wins", 0)),
+                        "damage": float(s.get("damage", 0)),
+                        "frags": float(s.get("frags", 0)),
+                    })
+                except Exception:
+                    continue
+            ok = db_index_ships(acc, clean) if acc and clean else False
+            self.send_json({"status": "ok", "indexed": len(clean) if ok else 0,
+                            "enabled": bool(DATABASE_URL)})
         except Exception as e:  # noqa
             self.send_json({"status": "error", "error": {"message": str(e)}}, 500)
 
