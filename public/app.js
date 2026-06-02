@@ -32,6 +32,7 @@ const I18N = {
     shipsPlayed: n => `Ships played (${n})`,
     all: "All", ship: "Ship", tier: "Tier", type: "Type",
     premiumOnly: "Premium only", searchShip: "Search ship…", noMatch: "No ships match these filters.",
+    analysis: "Breakdown", byClass: "By class", byTier: "By tier", byNation: "By nation", shipsCount: "Ships", nation: "Nation", nextUp: "Next tier", maxTier: "Top tier reached",
     shipsNoMode: "Per-ship statistics are not available for this mode via the API.",
     footer: 'Wows Stats \u2014 data via the Wargaming Public API.',
     types: { Destroyer: "Destroyer", Cruiser: "Cruiser", Battleship: "Battleship", AirCarrier: "Aircraft Carrier", Submarine: "Submarine" },
@@ -63,6 +64,7 @@ const I18N = {
     shipsPlayed: n => `Navi giocate (${n})`,
     all: "Tutti", ship: "Nave", tier: "Tier", type: "Tipo",
     premiumOnly: "Solo premium", searchShip: "Cerca nave…", noMatch: "Nessuna nave corrisponde ai filtri.",
+    analysis: "Analisi", byClass: "Per classe", byTier: "Per tier", byNation: "Per nazione", shipsCount: "Navi", nation: "Nazione", nextUp: "Prossima categoria", maxTier: "Categoria massima",
     shipsNoMode: "Le statistiche per nave non sono disponibili per questa modalit\u00e0 tramite l'API.",
     footer: 'Wows Stats \u2014 dati via Wargaming Public API.',
     types: { Destroyer: "Cacciatorpediniere", Cruiser: "Incrociatore", Battleship: "Corazzata", AirCarrier: "Portaerei", Submarine: "Sottomarino" },
@@ -94,6 +96,7 @@ const I18N = {
     shipsPlayed: n => `Navires jou\u00e9s (${n})`,
     all: "Tous", ship: "Navire", tier: "Tier", type: "Type",
     premiumOnly: "Premium uniquement", searchShip: "Rechercher un navire…", noMatch: "Aucun navire ne correspond aux filtres.",
+    analysis: "Analyse", byClass: "Par classe", byTier: "Par tier", byNation: "Par nation", shipsCount: "Navires", nation: "Nation", nextUp: "Catégorie suivante", maxTier: "Catégorie maximale",
     shipsNoMode: "Les statistiques par navire ne sont pas disponibles pour ce mode via l'API.",
     footer: 'Wows Stats \u2014 donn\u00e9es via Wargaming Public API.',
     types: { Destroyer: "Destroyer", Cruiser: "Croiseur", Battleship: "Cuirass\u00e9", AirCarrier: "Porte-avions", Submarine: "Sous-marin" },
@@ -125,6 +128,7 @@ const I18N = {
     shipsPlayed: n => `Gespielte Schiffe (${n})`,
     all: "Alle", ship: "Schiff", tier: "Tier", type: "Typ",
     premiumOnly: "Nur Premium", searchShip: "Schiff suchen…", noMatch: "Keine Schiffe entsprechen den Filtern.",
+    analysis: "Analyse", byClass: "Nach Klasse", byTier: "Nach Tier", byNation: "Nach Nation", shipsCount: "Schiffe", nation: "Nation", nextUp: "Nächste Stufe", maxTier: "Höchste Stufe",
     shipsNoMode: "Schiffsbezogene Statistiken sind f\u00fcr diesen Modus \u00fcber die API nicht verf\u00fcgbar.",
     footer: 'Wows Stats \u2014 Daten via Wargaming Public API.',
     types: { Destroyer: "Zerst\u00f6rer", Cruiser: "Kreuzer", Battleship: "Schlachtschiff", AirCarrier: "Flugzeugtr\u00e4ger", Submarine: "U-Boot" },
@@ -156,6 +160,7 @@ const I18N = {
     shipsPlayed: n => `Barcos jugados (${n})`,
     all: "Todos", ship: "Barco", tier: "Tier", type: "Tipo",
     premiumOnly: "Solo premium", searchShip: "Buscar barco…", noMatch: "Ningún barco coincide con los filtros.",
+    analysis: "Análisis", byClass: "Por clase", byTier: "Por tier", byNation: "Por nación", shipsCount: "Barcos", nation: "Nación", nextUp: "Categoría siguiente", maxTier: "Categoría máxima",
     shipsNoMode: "Las estad\u00edsticas por barco no est\u00e1n disponibles para este modo v\u00eda API.",
     footer: 'Wows Stats \u2014 datos via Wargaming Public API.',
     types: { Destroyer: "Destructor", Cruiser: "Crucero", Battleship: "Acorazado", AirCarrier: "Portaaviones", Submarine: "Submarino" },
@@ -346,6 +351,76 @@ function shipPR(s) {
   return 700 * nDmg + 300 * nFrags + 150 * nWins;
 }
 
+/* ---------- categorie successive (PR / WR) ---------- */
+const WR_BRACKETS = [
+  [0, "#86868b", 0], [0.001, "#d11500", 1], [47, "#d97000", 2], [50, "#b8860b", 3],
+  [52, "#3a9400", 4], [54, "#2e7d00", 5], [56, "#009b8a", 6], [60, "#b521d6", 7], [65, "#8a0ba8", 8],
+];
+function nextBracket(value, scale) {
+  let nextRow = null;
+  for (const row of scale) { if (row[0] > value) { nextRow = row; break; } }
+  if (!nextRow) return null;
+  return { label: (t("prLabels")[nextRow[2]] || ""), gap: nextRow[0] - value, color: nextRow[1] };
+}
+
+/* ---------- analisi: aggregazione per gruppo (classe/tier/nazione) ---------- */
+function aggGroup(ships, keyFn) {
+  const groups = {};
+  for (const s of ships) {
+    const pvp = s.pvp; if (!pvp || !pvp.battles) continue;
+    const k = keyFn(s.ship_id); if (k == null || k === "") continue;
+    (groups[k] = groups[k] || []).push(s);
+  }
+  const out = [];
+  for (const k in groups) {
+    const arr = groups[k]; let b = 0, w = 0, d = 0;
+    for (const s of arr) { b += s.pvp.battles; w += s.pvp.wins; d += s.pvp.damage_dealt; }
+    out.push({ key: k, ships: arr.length, battles: b, wr: b ? w / b * 100 : 0, dmg: b ? d / b : 0, pr: computePR(arr) });
+  }
+  return out;
+}
+function buildBreakdowns() {
+  const meta = id => _shipsMeta[String(id)] || {};
+  return {
+    type:   aggGroup(_allShips, id => meta(id).type),
+    tier:   aggGroup(_allShips, id => meta(id).tier),
+    nation: aggGroup(_allShips, id => meta(id).nation),
+  };
+}
+function renderBreakdown(which) {
+  _bdWhich = which;
+  const head = document.getElementById("bdGroupHead");
+  if (head) head.textContent = which === "type" ? t("type") : which === "tier" ? t("tier") : t("nation");
+  const body = document.getElementById("bdBody"); if (!body) return;
+  let rows = (_bd && _bd[which] || []).slice();
+  if (which === "tier") rows.sort((a, b) => (+a.key) - (+b.key));
+  else if (which === "type") { const ord = { Destroyer: 0, Cruiser: 1, Battleship: 2, AirCarrier: 3, Submarine: 4 }; rows.sort((a, b) => (ord[a.key] ?? 9) - (ord[b.key] ?? 9)); }
+  else rows.sort((a, b) => b.battles - a.battles);
+  body.innerHTML = rows.map(g => {
+    const prc = prColor(g.pr || 0);
+    const label = which === "type" ? `<span class="type-tag">${classIcon(g.key)}${t("types")[g.key] || g.key}</span>`
+      : which === "tier" ? `<span class="tier-tag">${roman(+g.key)}</span>`
+      : (nationTag(g.key) || g.key);
+    return `<tr>
+      <td class="left">${label}</td>
+      <td>${fmt(g.ships)}</td>
+      <td>${fmt(g.battles)}</td>
+      <td class="wr-cell" style="color:${wrColor(g.wr)}">${fmt(g.wr, 1)}</td>
+      <td>${fmt(g.dmg)}</td>
+      <td class="pr-cell" style="color:${g.pr != null ? prc.color : "inherit"}">${g.pr != null ? fmt(g.pr) : "\u2014"}</td>
+    </tr>`;
+  }).join("");
+}
+function bindBreakdown() {
+  const seg = document.getElementById("bdSeg");
+  if (!seg) return;
+  seg.addEventListener("click", e => {
+    const btn = e.target.closest("button"); if (!btn) return;
+    [...seg.children].forEach(b => b.classList.toggle("on", b === btn));
+    renderBreakdown(btn.dataset.b);
+  });
+}
+
 /* ---------- viste ---------- */
 const els = {
   hero: $("#hero"), results: $("#results"), resultsList: $("#resultsList"),
@@ -496,6 +571,7 @@ async function loadPlayer(accountId, nick) {
 
 /* ---------- rendering profilo ---------- */
 let _ships = [], _sortKey = "battles", _sortDir = -1, _tierFilter = 0, _classFilter = "", _premOnly = false, _nameQuery = "";
+let _bd = null, _bdWhich = "type";
 let _player = null, _clanTag = null, _allShips = [], _activeMode = "pvp", _availModes = [];
 let _clanColor = null;
 
@@ -662,6 +738,17 @@ function drawMode() {
       ${stat(t("kd"), fmt(deaths ? pvp.frags / deaths : pvp.frags, 2))}
       ${stat(t("wins"), fmt(pvp.wins || 0))}
     </div>`;
+    const wrNext = nextBracket(wr, WR_BRACKETS);
+    const overallPR = key === "pvp" ? computePR(_allShips) : null;
+    const prNext = overallPR != null ? nextBracket(overallPR, PR_SCALE) : null;
+    html += `<div class="nextup"><span class="nextup-lab">${t("nextUp")}</span>` +
+      (key === "pvp"
+        ? (prNext ? `<span class="nextup-chip" style="color:${prNext.color}">PR +${fmt(prNext.gap)} \u2192 ${prNext.label}</span>`
+                  : (overallPR != null ? `<span class="nextup-chip nextup-max">PR \u00b7 ${t("maxTier")}</span>` : ""))
+        : "") +
+      (wrNext ? `<span class="nextup-chip" style="color:${wrNext.color}">WR +${fmt(wrNext.gap, 1)}% \u2192 ${wrNext.label}</span>`
+              : `<span class="nextup-chip nextup-max">WR \u00b7 ${t("maxTier")}</span>`) +
+      `</div>`;
   } else {
     html += `<div class="empty-mode">${t("noBattlesIn", modeLabel)}</div>`;
   }
@@ -704,6 +791,26 @@ function drawMode() {
         <tbody id="shipBody"></tbody>
       </table></div>
     </section>`;
+    if (key === "pvp") html += `<section class="ships breakdown" style="margin-top:28px">
+      <div class="ships-head"><h2>${t("analysis")}</h2>
+        <div class="tier-filter" id="bdSeg">
+          <button data-b="type" class="on">${t("byClass")}</button>
+          <button data-b="tier">${t("byTier")}</button>
+          <button data-b="nation">${t("byNation")}</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th class="left" id="bdGroupHead">${t("type")}</th>
+          <th>${t("shipsCount")}</th>
+          <th>${t("battles")}</th>
+          <th>WR%</th>
+          <th>${t("avgDamage")}</th>
+          <th>PR</th>
+        </tr></thead>
+        <tbody id="bdBody"></tbody>
+      </table></div>
+    </section>`;
   } else if (b > 0 && key !== "pvp") {
     html += `<div class="empty-mode" style="margin-top:24px">${t("shipsNoMode")}</div>`;
   }
@@ -716,6 +823,7 @@ function drawMode() {
     _classFilter = ""; _premOnly = false; _nameQuery = "";
     bindTable();
     drawShips();
+    if (key === "pvp") { _bd = buildBreakdowns(); _bdWhich = "type"; bindBreakdown(); renderBreakdown("type"); }
   }
 }
 
