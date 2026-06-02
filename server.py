@@ -529,7 +529,7 @@ def get_ships_meta(realm):
     if cached is not None:
         return cached
 
-    fields = "ship_id,name,tier,type,nation,is_premium,is_special"
+    fields = "ship_id,name,tier,type,nation,is_premium,is_special,images"
     merged = {}
     page = 1
     while True:
