@@ -37,8 +37,10 @@ REALMS = {
 }
 DEFAULT_REALM = os.environ.get("WG_REALM", "eu")
 
-# Valori attesi per il calcolo del Personal Rating (pubblicati da wows-numbers)
-EXPECTED_URL = "https://api.wows-numbers.com/personal/rating/expected/json/"
+# Valori attesi per il calcolo del Personal Rating (pubblicati da wows-numbers).
+# Nota: wows-numbers rifiuta le richieste che non sembrano un browser, quindi
+# la chiamata usa header da browser (vedi get_expected).
+EXPECTED_URL = "https://wows-numbers.com/personal/rating/expected/json/"
 
 PORT = int(os.environ.get("PORT", "8000"))
 # In locale: 127.0.0.1 (solo questo PC). Online (Render): HOST=0.0.0.0
@@ -132,12 +134,33 @@ def get_ships_meta(realm):
 
 
 def get_expected():
-    """Scarica i valori attesi per il Personal Rating."""
+    """Scarica i valori attesi per il Personal Rating da wows-numbers.
+
+    wows-numbers blocca le richieste che non sembrano un browser (403),
+    quindi inviamo header realistici. Se fallisce, ritorna {} senza bloccare
+    il resto del sito (il PR resterà semplicemente non calcolato).
+    """
     cached = _cache_get("expected")
     if cached is not None:
         return cached
-    data = fetch_json(EXPECTED_URL)
-    table = data.get("data") or {}
+    headers = {
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) "
+                       "Chrome/124.0 Safari/537.36"),
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://wows-numbers.com/personal/rating/",
+    }
+    table = {}
+    try:
+        req = Request(EXPECTED_URL, headers=headers)
+        with urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+        data = json.loads(raw)
+        table = data.get("data") or {}
+    except Exception as e:  # noqa
+        sys.stderr.write("get_expected fallita: %s\n" % e)
+        table = {}
     _cache_set("expected", table)
     return table
 
