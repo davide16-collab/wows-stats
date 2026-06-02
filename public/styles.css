@@ -132,7 +132,10 @@ a:hover{text-decoration:underline;}
 .tier-filter button{background:var(--card);border:1px solid var(--line-2);color:var(--txt-dim);font-family:var(--mono);font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer;transition:all .12s;}
 .tier-filter button:hover{border-color:var(--blue);color:var(--blue);}
 .tier-filter button.on{background:var(--blue);border-color:var(--blue);color:#fff;}
-.table-wrap{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-sm);}
+.table-wrap{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-lg);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;box-shadow:var(--shadow-sm);}
+.table-wrap::-webkit-scrollbar{height:7px;}
+.table-wrap::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:4px;}
+.table-wrap::-webkit-scrollbar-track{background:transparent;}
 table{width:100%;border-collapse:collapse;}
 thead tr{background:var(--card-2);}
 th{font-family:var(--mono);font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--txt-faint);font-weight:500;text-align:right;padding:14px 16px;cursor:pointer;white-space:nowrap;border-bottom:1px solid var(--line);user-select:none;}
@@ -198,6 +201,13 @@ tbody tr:hover{background:var(--card-2);}
   .pcard{flex-direction:column;align-items:flex-start;}
   .pnick{font-size:28px;}
   .topbar{padding:12px 16px;}
+  table{width:auto;min-width:100%;}
+  th{padding:11px 12px;}
+  td{padding:11px 12px;font-size:14px;white-space:nowrap;}
+  .ship-ic{height:20px;margin-right:7px;}
+  .cls-ic{margin-right:4px;}
+  .lb-shiphead img{height:36px;}
+  .lb-shiphead .sh-name{font-size:16px;}
 }
 
 /* ---------- progresso dall'ultima visita ---------- */

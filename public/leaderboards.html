@@ -39,6 +39,11 @@
     padding:10px 22px;border-radius:980px;cursor:pointer;}
   .lb-find button:hover{background:var(--blue-dark);}
   .lb-findmsg{font-size:13px;color:var(--txt-dim);}
+  @media (max-width:640px){
+    .lb-controls input,.lb-controls select{min-width:0;flex:1 1 100%;}
+    .lb-find input{min-width:0;flex:1 1 auto;}
+    .lb-find{gap:8px;}
+  }
 </style>
   <script src="theme.js"></script>
 </head>
